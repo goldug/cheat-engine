@@ -29,15 +29,15 @@ platform:
 # Scripts that run after cloning repository
 install:
   - cmd: echo Download lazarus-1.6.4-fpc-3.0.2-win32
-  - cmd: curl -fsSL -o lazarus-1.6.4-fpc-3.0.2-win32.exe "https://www.dropbox.com/s/4l1h2ku0srtscfo/lazarus-1.6.4-fpc-3.0.2-win32.exe?dl=1"
+  - cmd: curl -fsSL -o lazarus-1.6.4-fpc-3.0.2-win32.exe "https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2032%20bits/Lazarus%201.6.4/lazarus-1.6.4-fpc-3.0.2-win32.exe?ts=gAAAAABgrPSHx2ClW-nzPEULsUrkGxsKCzuFYcCRLodsfG8yg3xWVWr5HZAkwexHQX_q5lIx0qqEcokhv-_WIqN7h_Uz0TSCEQ%3D%3D&r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Flazarus%2Ffiles%2FLazarus%2520Windows%252032%2520bits%2FLazarus%25201.6.4%2Flazarus-1.6.4-fpc-3.0.2-win32.exe%2Fdownload%3Fuse_mirror%3Ddeac-fra%26download%3D%26failedmirror%3Ddeac-riga.dl.sourceforge.net"
   - cmd: echo Installing lazarus-1.6.4-fpc-3.0.2-win32
   - cmd: lazarus-1.6.4-fpc-3.0.2-win32.exe /verysilent
   - cmd: echo Downloading lazarus-1.6.4-fpc-3.0.2-cross-x86_64-win64-win32
-  - cmd: curl -fsSL -o lazarus-1.6.4-fpc-3.0.2-cross-x86_64-win64-win32.exe "https://www.dropbox.com/s/vulmr71jdnokxuj/lazarus-1.6.4-fpc-3.0.2-cross-x86_64-win64-win32.exe?dl=1"
+  - cmd: curl -fsSL -o lazarus-1.6.4-fpc-3.0.2-cross-x86_64-win64-win32.exe "https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2064%20bits/Lazarus%201.6.4/lazarus-1.6.4-fpc-3.0.2-win64.exe?ts=gAAAAABgrPUUdyyzqWF4zqFcPrzE8feIIjBUvlwH2CjXRKHjKpyNsfx3qMcWk3wBgdUv6qJA4K7YIbjShss_QhFZJjzd9aZgEA%3D%3D&r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Flazarus%2Ffiles%2FLazarus%2520Windows%252064%2520bits%2FLazarus%25201.6.4%2Flazarus-1.6.4-fpc-3.0.2-win64.exe%2Fdownload"
   - cmd: echo Installing lazarus-1.6.4-fpc-3.0.2-cross-x86_64-win64-win32
   - cmd: lazarus-1.6.4-fpc-3.0.2-cross-x86_64-win64-win32.exe /verysilent
   - cmd: echo Downloading lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32
-  - cmd: curl -fsSL -o lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe "https://www.dropbox.com/s/7vyye0rz6cj1ad0/lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe?dl=1"
+  - cmd: curl -fsSL -o lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe "https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2032%20bits/Lazarus%201.6.4/lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe?ts=gAAAAABgrPVglaOEDbDRegbZ877fho13FQR07LbsYiaEvf7S6pLy1G2N0U3OZHPc92MXh4JhroR3rdp_w9aDZd-UCElggifBFg%3D%3D&r=https%3A%2F%2Fsourceforge.net%2Fprojects%2Flazarus%2Ffiles%2FLazarus%2520Windows%252032%2520bits%2FLazarus%25201.6.4%2Flazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe%2Fdownload"
   - cmd: echo Installing lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe
   - cmd: lazarus-1.6.4-fpc-3.0.2-cross-arm-wince-win32.exe /verysilent
   - cmd: rmdir /S /Q c:\lazarus\docs
