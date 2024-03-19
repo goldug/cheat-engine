@@ -349,7 +349,7 @@ type
     procedure PointerscanStart(sender: TObject);
     procedure doneui;
     procedure resyncloadedmodulelist;
-    procedure OpenPointerfile(filename: string);
+    procedure OpenPointerfile(filename: widestring);
     procedure stopscan(savestate: boolean);
     procedure PointerscanDone(sender: TObject; hasError: boolean; errorstring: string); //called by the pointerscan controller thread when done
   public
@@ -376,7 +376,7 @@ uses PointerscannerSettingsFrm, {$ifdef windows}frmMemoryAllocHandlerUnit,frmSor
   frmpointerrescanconnectdialogunit, frmMergePointerscanResultSettingsUnit,  {$endif}
   ProcessHandlerUnit, {$ifdef windows}frmResumePointerscanUnit,{$endif} PointerscanConnector,
   {$ifdef windows}frmSetupPSNNodeUnit,{$endif} PointerscanNetworkStructures, parsers, byteinterpreter,
-  CustomTypeHandler, ceregistry, vartypestrings;
+  CustomTypeHandler, ceregistry, vartypestrings, mainunit2;
 
 resourcestring
   rsErrorDuringScan = 'Error during scan';
@@ -1123,6 +1123,8 @@ begin
         setlength(staticscanner.mustendwithoffsetlist, frmpointerscannersettings.offsetlist.count);
         for i:=0 to frmpointerscannersettings.offsetlist.count-1 do
           staticscanner.mustendwithoffsetlist[i]:=TOffsetEntry(frmpointerscannersettings.offsetlist[i]).offset;
+
+        staticscanner.mustEndWithSpecificOffsetMaxDeviation:=frmpointerscannersettings.maxOffsetDeviation;
       end;
 
       staticscanner.instantrescan:=frmpointerscannersettings.cbCompareToOtherPointermaps.checked;
@@ -1180,6 +1182,8 @@ begin
         pnlProgress.ClientHeight:=ProgressBar1.Top+progressbar1.height+1;
 
       staticscanner.onlyOneStaticInPath:=frmpointerscannersettings.cbOnlyOneStatic.checked;
+
+      staticscanner.scanPagedMemoryOnly:=frmpointerscannersettings.cbScanResidentMemory.checked;
 
       staticscanner.useHeapData:=frmpointerscannersettings.cbUseHeapData.Checked;
       staticscanner.useOnlyHeapData:=frmpointerscannersettings.cbHeapOnly.checked;
@@ -1413,13 +1417,13 @@ begin
 
 
        if messagedlg(rsPSExportToDatabaseBiggerSizeOrNot, mtConfirmation, [mbyes, mbno], 0) = mryes then
-        begin
-          sqlite3.ExecuteDirect('create table results(ptrid integer not null, resultid integer, offsetcount integer, moduleid integer, moduleoffset integer '+offsetlist+', primary key (ptrid, resultid) );');
-          sqlite3.ExecuteDirect('CREATE INDEX "ptr_res_id_idx" ON "results"( ptrid, resultid );');
-          sqlite3.ExecuteDirect('CREATE INDEX "modid_modoff_idx" ON "results"( moduleid, moduleoffset );');
-        end
-        else
-          sqlite3.ExecuteDirect('create table results(ptrid integer not null, resultid integer, offsetcount integer, moduleid integer, moduleoffset integer '+offsetlist+');');
+       begin
+         sqlite3.ExecuteDirect('create table results(ptrid integer not null, resultid integer, offsetcount integer, moduleid integer, moduleoffset bigint '+offsetlist+', primary key (ptrid, resultid) );');
+         sqlite3.ExecuteDirect('CREATE INDEX "ptr_res_id_idx" ON "results"( ptrid, resultid );');
+         sqlite3.ExecuteDirect('CREATE INDEX "modid_modoff_idx" ON "results"( moduleid, moduleoffset );');
+       end
+       else
+         sqlite3.ExecuteDirect('create table results(ptrid integer not null, resultid integer, offsetcount integer, moduleid integer, moduleoffset bigint '+offsetlist+');');
       end
       else
       begin
@@ -2018,7 +2022,7 @@ begin
   SaveFormPosition(self);
 
   reg:=tregistry.create;
-  if reg.OpenKey('\Software\Cheat Engine\Pointerscan', true) then
+  if reg.OpenKey('\Software\'+strCheatEngine+'\Pointerscan', true) then
   begin
     reg.writeInteger('Display Type', cbtype.itemindex);
     reg.writeBool('Display Signed',miSigned.checked);
@@ -2540,7 +2544,7 @@ begin
 
 end;
 
-procedure Tfrmpointerscanner.OpenPointerfile(filename: string);
+procedure Tfrmpointerscanner.OpenPointerfile(filename: widestring);
 var
   i: integer;
 
@@ -2614,7 +2618,7 @@ end;
 procedure Tfrmpointerscanner.Open1Click(Sender: TObject);
 begin
   if opendialog1.Execute then
-    OpenPointerfile(utf8toansi(Opendialog1.filename));
+    OpenPointerfile(UTF8ToString(Opendialog1.filename));
 end;
 
 function TRescanWorker.isMatchToValue(p:pointer): boolean;
@@ -3665,7 +3669,7 @@ begin
 
   reg:=TRegistry.Create;
 
-  if reg.OpenKey('\Software\Cheat Engine\Pointerscan', false) then
+  if reg.OpenKey('\Software\'+strCheatEngine+'\Pointerscan', false) then
   begin
     if reg.ValueExists('Display Type') then
       cbtype.itemindex:=reg.ReadInteger('Display Type');

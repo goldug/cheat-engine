@@ -177,6 +177,8 @@ end;
 procedure TTablist.MouseDown(Button: TMouseButton; Shift:TShiftState; X,Y:Integer);
 var i: integer;
 begin
+  if not enabled then exit;
+
   i:=GetTabIndexAt(x,y);
   if i<>-1 then
     selectedTab:=i;
@@ -249,7 +251,7 @@ end;
 
 function TTablist.AddTab(t: string): integer;
 begin
-  fTabs.Add(t);
+  fTabs.Add(t.QuotedString(' '));
   result:=ftabs.count-1;
 
   if assigned(fOnTabCreate) then
@@ -287,7 +289,12 @@ begin
   if ShouldAppsUseDarkMode then
     gradientStart:=$222222
   else
-    gradientStart:=clWhite;
+    gradientStart:=$ffffff;
+
+  canvas.brush.color:=color;
+  canvas.pen.color:=color;
+  canvas.brush.style:=bsSolid;
+  canvas.FillRect(ClientRect);
 
 
   //create a total of 'fTabs.count' tabs
@@ -408,7 +415,7 @@ begin
   controlWithArrows.AnchorSideBottom.Side:=asrTop;
   controlWithArrows.AnchorSideRight.Control:=Self;
   controlWithArrows.AnchorSideRight.Side:=asrRight;
-  controlWithArrows.BorderSpacing.Right:=50;
+  controlWithArrows.BorderSpacing.Right:=10;
 
 
 end;

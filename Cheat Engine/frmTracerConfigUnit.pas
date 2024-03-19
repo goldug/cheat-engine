@@ -21,6 +21,8 @@ type
     cbSkipSystemModules: TCheckBox;
     cbDBVMBreakAndTrace: TCheckBox;
     cbDBVMTriggerCOW: TCheckBox;
+    cbStayInsideInitialModule: TCheckBox;
+    cbStepOverRep: TCheckBox;
     edtStartCondition: TEdit;
     edtMaxTrace: TEdit;
     edtStopCondition: TEdit;
@@ -36,7 +38,11 @@ type
     rbBreakOnAccess: TRadioButton;
     rbBreakOnWrite: TRadioButton;
     procedure cbDBVMBreakAndTraceChange(Sender: TObject);
+    procedure cbStepOverChange(Sender: TObject);
+    procedure FormConstrainedResize(Sender: TObject; var MinWidth, MinHeight,
+      MaxWidth, MaxHeight: TConstraintSize);
     procedure FormCreate(Sender: TObject);
+    procedure FormShow(Sender: TObject);
   private
     { private declarations }
     fDataTrace: boolean;
@@ -56,13 +62,12 @@ implementation
 { TfrmTracerConfig }
 
 uses NewKernelHandler, DebugHelper, debuggerinterface, DebuggerInterfaceAPIWrapper,
-  formsettingsunit, DBVMDebuggerInterface;
+  formsettingsunit, DBVMDebuggerInterface, GDBServerDebuggerInterface;
 
 function TfrmTracerConfig.getBreakpointmethod: TBreakpointmethod;
 begin
   if (CurrentDebuggerInterface<>nil) and (CurrentDebuggerInterface is TDBVMDebugInterface) then
     exit(bpmDBVMNative);
-
 
   result:=bpmDebugRegister;
 
@@ -112,8 +117,14 @@ begin
   if (CurrentDebuggerInterface=nil) and isRunningDBVM then //no debugger running, go for dbvm by default
     cbDBVMBreakAndTrace.Checked:=true;
 
-  if (CurrentDebuggerInterface<>nil) and (CurrentDebuggerInterface is TDBVMDebugInterface) or (formSettings.cbUseDBVMDebugger.checked) then
+  if ((CurrentDebuggerInterface<>nil) and ((CurrentDebuggerInterface is TDBVMDebugInterface) or (CurrentDebuggerInterface is TGDBServerDebuggerInterface))) or (formSettings.cbUseDBVMDebugger.checked) then
     groupbox1.visible:=false;
+end;
+
+procedure TfrmTracerConfig.FormShow(Sender: TObject);
+begin
+
+ // autosize:=false;
 end;
 
 procedure TfrmTracerConfig.cbDBVMBreakAndTraceChange(Sender: TObject);
@@ -121,6 +132,8 @@ begin
 
   if cbDBVMBreakAndTrace.Checked then
   begin
+    cbStayInsideInitialModule.checked:=false;
+    cbStayInsideInitialModule.enabled:=false;
     cbDBVMTriggerCOW.visible:=true;
     cbDereferenceAddresses.enabled:=false;
     cbStepOver.enabled:=false;
@@ -153,10 +166,32 @@ begin
     label3.enabled:=true;
     edtStartCondition.enabled:=true;
 
-    label2.enabled:=false;
+    label2.enabled:=true;
     edtStopCondition.enabled:=true;
+
+    cbStayInsideInitialModule.enabled:=true;
   end;
 
+end;
+
+procedure TfrmTracerConfig.cbStepOverChange(Sender: TObject);
+begin
+  if cbStepOver.checked then
+  begin
+    cbStepOverRep.enabled:=false;
+    cbStepOverRep.checked:=true;
+  end
+  else
+  begin
+    cbStepOverRep.enabled:=true;
+  end;
+end;
+
+procedure TfrmTracerConfig.FormConstrainedResize(Sender: TObject; var MinWidth,
+  MinHeight, MaxWidth, MaxHeight: TConstraintSize);
+begin
+  MaxHeight:=panel1.top+panel1.Height+8;
+  MinHeight:=MaxHeight;
 end;
 
 procedure TfrmTracerConfig.setDataTrace(state: boolean);

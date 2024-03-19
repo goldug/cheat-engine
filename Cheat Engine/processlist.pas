@@ -20,6 +20,10 @@ procedure cleanProcessList(processlist: TStrings);
 
 function GetFirstModuleName(processid: dword): string;
 
+procedure pidlookup_init;
+function pidexists(pid: dword): boolean;
+function getpidname(pid: dword): string;
+
 
 //global vars refering to the processlist
 var
@@ -28,7 +32,8 @@ var
 
 implementation
 
-uses Globals, commonTypeDefs{$ifdef windows}, networkInterfaceApi{$endif}
+uses Globals, commonTypeDefs, DebuggerInterfaceAPIWrapper, networkInterfaceApi,
+  GDBServerDebuggerInterface, maps
   {$ifdef darwin}
   , macportdefines //must be at the end
   {$endif}
@@ -37,6 +42,92 @@ uses Globals, commonTypeDefs{$ifdef windows}, networkInterfaceApi{$endif}
 resourcestring
     rsICanTGetTheProcessListYouArePropablyUsingWindowsNT = 'I can''t get the process list. You are propably using windows NT. Use the window list instead!';
 
+var pidlookup: TMap;
+
+procedure pidlookup_init;
+var
+  ths: THandle;
+  pe: TProcessEntry32;
+  mi: TMapIterator;
+  t: pchar;
+  pname: string;
+  pid: dword;
+begin
+  if pidlookup<>nil then
+  begin
+    mi:=TMapIterator.Create(pidlookup);
+    mi.First;
+    while not mi.EOM do
+    begin
+      t:=nil;
+      mi.GetData(t);
+      if t<>nil then
+        StrDispose(t);
+
+      mi.Next;
+    end;
+
+    mi.free;
+    pidlookup.Free;
+  end;
+
+  pidlookup:=tmap.Create(itu8,sizeof(pchar));
+
+  ths:=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
+
+  //outputdebugstring('synsymbolsnow: getting processlist');
+  if (ths<>0) and (ths<>INVALID_HANDLE_VALUE) then
+  begin
+    try
+      //outputdebugstring('ths is valid');
+
+      ZeroMemory(@pe,sizeof(pe));
+      pe.dwSize:=sizeof(pe);
+
+
+      if Process32First(ths, pe) then
+      begin
+        repeat
+          //outputdebugstring('found process:'+pe.th32ProcessID.ToString);
+          if pe.th32ProcessID=0 then continue;
+
+          pname:=pchar(@pe.szExeFile[0]);
+          pname:=extractfilename(pname);
+
+          //outputdebugstring('processname is '+pname);
+
+          t:=strnew(pchar(pname));
+          pid:=pe.th32ProcessID;
+          pidlookup.Add(pid, t);
+        until Process32Next(ths,pe)=false;
+
+      end;
+
+    finally
+      closehandle(ths);
+    end;
+  end;
+
+end;
+
+function pidexists(pid: dword): boolean;
+begin
+  if pidlookup=nil then
+    pidlookup_init;
+
+  result:=pidlookup.HasId(pid);
+end;
+
+function getpidname(pid: dword): string;
+var s: pchar;
+begin
+  if pidlookup=nil then pidlookup_init;
+
+  if pidlookup.GetData(pid, s) then
+    result:=s
+  else
+    result:='';
+end;
 
 function GetFirstModuleName(processid: dword): string;
 var
@@ -45,7 +136,11 @@ var
   ModuleEntry: MODULEENTRY32;
 begin
   result:='';
-  SNAPHandle:=CreateToolhelp32Snapshot(TH32CS_SNAPMODULE{$ifdef darwin}or TH32CS_SNAPMODULEFIRSTONLY{$endif},processid);
+  if getconnection<>nil then
+    SNAPHandle:=CreateToolhelp32Snapshot(TH32CS_SNAPFIRSTMODULE{$ifdef darwin}or TH32CS_SNAPMODULEFIRSTONLY{$endif},processid)
+  else
+    SNAPHandle:=CreateToolhelp32Snapshot(TH32CS_SNAPMODULE{$ifdef darwin}or TH32CS_SNAPMODULEFIRSTONLY{$endif},processid);
+
   if SNAPHandle<>0 then
   begin
     ModuleEntry.dwSize:=sizeof(moduleentry);
@@ -62,25 +157,29 @@ end;
 procedure sanitizeProcessList(processlist: TStrings);
 var
   i: integer;
+{$IFDEF WINDOWS}
   ProcessListInfo: PProcessListInfo;
+  {$ENDIF}
 begin
+  {$ifdef windows}
   for i:=0 to processlist.count-1 do
     if processlist.Objects[i]<>nil then
     begin
       ProcessListInfo:= pointer( processlist.Objects[i]);
-{$ifdef windows}
+
       if (ProcessListInfo^.processIcon<>0) and (ProcessListInfo^.processIcon<>HWND(-1)) then
       begin
         if ProcessListInfo^.processID<>GetCurrentProcessId then
           DestroyIcon(ProcessListInfo^.processIcon);
       end;
-{$endif}
+
 
 
       freemem(ProcessListInfo);
 
       processlist.Objects[i]:=nil;
     end;
+  {$endif}
 end;
 
 procedure cleanProcessList(processlist: TStrings);
@@ -94,22 +193,33 @@ procedure GetProcessList(ProcessList: TStrings; NoPID: boolean=false; noProcessI
 var SNAPHandle: THandle;
     ProcessEntry: PROCESSENTRY32;
     Check: Boolean;
+    {$IFDEF WINDOWS}
+    lwindir: string;
     HI: HICON;
     ProcessListInfo: PProcessListInfo;
+    {$ENDIF}
     i,j: integer;
     s,s2: string;
 
-    lwindir: string;
+
 begin
   cleanProcessList(ProcessList);
 
+  if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+  begin
+    TGDBServerDebuggerInterface(CurrentDebuggerInterface).getProcessList(processlist);
+    if processlist.count<>0 then exit;
+  end;
+
   {$ifdef darwin}
-  macport.GetProcessList(processlist);
+  if getconnection=nil then
+  begin
+    macport.GetProcessList(processlist);
+    exit;
+  end;
   {$endif}
 
   {$ifdef windows}
-
-
   lwindir:=lowercase(windowsdir);
   ProcessListInfo:=nil;
   HI:=0;
@@ -117,6 +227,7 @@ begin
   j:=0;
 
 //  OutputDebugString('GetProcessList()');
+  {$endif}
 
 
 
@@ -148,9 +259,12 @@ begin
    // OutputDebugString('Setting up ProcessEntry dwSize');
     ProcessEntry.dwSize:=SizeOf(ProcessEntry);
 
-
+    {$ifdef windows}
     if getconnection<>nil then
       noProcessInfo:=true;
+    {$else}
+    noProcessInfo:=true;
+    {$endif}
 
     Check:=Process32First(SnapHandle,ProcessEntry);
     while check do
@@ -208,14 +322,15 @@ begin
     raise exception.Create(rsICanTGetTheProcessListYouArePropablyUsingWindowsNT);
     {$endif}
   end;
-  {$endif}
 end;
 
 {$ifndef JNI}
 procedure GetProcessList(ProcessList: TListBox; NoPID: boolean=false);
+{$IFDEF WINDOWS}
 var sl: tstringlist;
     i: integer;
     pli: PProcessListInfo;
+{$ENDIF}
 begin
   {$ifdef darwin}
   macport.GetProcessList(processlist.Items);

@@ -21,10 +21,14 @@
 
 
 #if !defined ONE_SOURCE || ONE_SOURCE
+//cheat engine api redirect
+#include "apiredirect.c"
+//cheat engine api redirect
 #include "tccpp.c"
 #include "tccgen.c"
 #include "tccelf.c"
 #include "tccrun.c"
+
 #ifdef TCC_TARGET_I386
 #include "i386-gen.c"
 #include "i386-link.c"
@@ -626,7 +630,7 @@ LIBTCCAPI void tcc_set_symbol_lookup_func(TCCState *s, void *userdata, void *(*s
 }
 
 
-LIBTCCAPI void tcc_set_binary_writer_func(TCCState *s, void *param, void(*binary_writer_func)(void* userdata, void* address, void* data, int size))
+LIBTCCAPI void tcc_set_binary_writer_func(TCCState *s, void *param, void(*binary_writer_func)(void* userdata, void* address, void* data, int size, int executable))
 {
 	s->binary_writer_func = binary_writer_func;
 	s->binary_writer_param = param;
@@ -750,8 +754,9 @@ static int _tcc_open(TCCState *s1, const char *filename)
     int fd;
     if (strcmp(filename, "-") == 0)
         fd = 0, filename = "<stdin>";
-    else
-        fd = open(filename, O_RDONLY | O_BINARY);
+	else
+		fd = open(filename, O_RDONLY | O_BINARY);
+
     if ((s1->verbose == 2 && fd >= 0) || s1->verbose == 3)
         printf("%s %*s%s\n", fd < 0 ? "nf":"->",
                (int)(s1->include_stack_ptr - s1->include_stack), "", filename);
@@ -1077,11 +1082,15 @@ ST_FUNC int tcc_add_file_internal(TCCState *s1, const char *filename, int flags)
         case AFF_BINTYPE_DYN:
             if (s1->output_type == TCC_OUTPUT_MEMORY) {
 #ifdef TCC_IS_NATIVE
+//Cheat Engine
+#ifndef _WINDOWS
                 void *dl = dlopen(filename, RTLD_GLOBAL | RTLD_LAZY);
                 if (dl) {
                     tcc_add_dllref(s1, filename)->handle = dl;
                     ret = 0;
                 }
+#endif //_WINDOWS
+//Cheat Engine Stop
 #endif
                 break;
             }
@@ -1331,9 +1340,9 @@ LIBTCCAPI void tcc_get_symbols(TCCState *s, void* userdata, void(*callback)(void
 
 	if (callback)
 		for_each_elem(s->symtab, 1, sym, ElfW(Sym)) {
-		if ((sym->st_value) && (sym->st_shndx))
+		if ((sym->st_value) && (sym->st_shndx) && (sym->st_size))
 		{
-			char *name = (char *)s->symtab->link->data + sym->st_name;
+			char *name = (char *)s->symtab->link->data + sym->st_name;			
 			callback(userdata, sym->st_value, name);
 		}
 	}

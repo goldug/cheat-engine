@@ -30,7 +30,6 @@ type
   TformSettings = class(TForm)
     askforreplacewithnops: TCheckBox;
     btnCancel: TButton;
-    btnExcludeProcesses: TButton;
     btnOK: TButton;
     btnSetFont: TButton;
     btnSelectLanguage: TButton;
@@ -38,12 +37,11 @@ type
     btnRestoreKernelProtection: TButton;
     cbAlwaysAutoAttach: TCheckBox;
     cbCanStepKernelcode: TCheckBox;
-    cbCenterOnPopup: TCheckBox;
     cbDontOpenHandle: TCheckBox;
     cbDontusetempdir: TCheckBox;
     cbFastscan: TCheckBox;
+    cbGDBWriteCode2: TCheckBox;
     cbGlobalDebug: TCheckBox;
-    cbHideAllWindows: TCheckBox;
     cbKDebug: TRadioButton;
     cbMemImage: TCheckBox;
     cbMemMapped: TCheckBox;
@@ -59,6 +57,7 @@ type
     cbShowProcesslist: TCheckBox;
     cbShowUndo: TCheckBox;
     cbsimplecopypaste: TCheckBox;
+    cbSkipPDB: TCheckBox;
     cbSkip_PAGE_NOCACHE: TCheckBox;
     cbUpdatefoundList: TCheckBox;
     cbUseVEHDebugger: TRadioButton;
@@ -92,9 +91,30 @@ type
     cbDBVMDebugTriggerCOW: TCheckBox;
     cbDBVMDebugTargetedProcessOnly: TCheckBox;
     cbDBVMDebugKernelmodeBreaks: TCheckBox;
+    cbSaveMemoryregionScanSettings: TCheckBox;
+    cbUseIntelPT: TCheckBox;
+    cbRecordIPTForFindWhatRoutines: TCheckBox;
+    cbIPTTraceSize: TComboBox;
+    cbHideIPTCapability: TCheckBox;
+    cbSynchronizeSymbols: TCheckBox;
+    cbClearSymbolsOnProcessOpen: TCheckBox;
+    cbDontDeleteSymbols: TCheckBox;
+    cbSymbolSyncInterval: TCheckBox;
+    cbAlwaysAttemptToLaunchAsAdmin: TCheckBox;
+    cbLaunchGDBServer: TCheckBox;
+    cbGDBWriteCode: TCheckBox;
+    cbAskToClearListOnOpen: TCheckBox;
+    cbAttachDebuggerToRosettaOnProcessOpen: TCheckBox;
+    cbAskToAttachToRosetta: TCheckBox;
+    cbUseRosettaDebugserver: TCheckBox;
     combothreadpriority: TComboBox;
     defaultbuffer: TPopupMenu;
     Default1: TMenuItem;
+    edtRosettaDebugserverPort: TEdit;
+    edtRosettaDebugserverLaunchCommand: TEdit;
+    edtGDBServerCommand: TEdit;
+    edtGDBPort: TEdit;
+    edtSymbolSyncTimer: TEdit;
     edtRepeatDelay: TEdit;
     edtLuaCollectTimer: TEdit;
     edtLuaMinCollectSize: TEdit;
@@ -124,6 +144,11 @@ type
     Label17: TLabel;
     Label20: TLabel;
     Label25: TLabel;
+    Label26: TLabel;
+    Label27: TLabel;
+    lblRosettaPort: TLabel;
+    lblRosettaLaunchCommand: TLabel;
+    lblMaxIPTSize: TLabel;
     lblRepeatDelay: TLabel;
     lblCurrentLanguage: TLabel;
     Label18: TLabel;
@@ -157,6 +182,7 @@ type
     miUnexpectedBreakpointsBreak: TRadioButton;
     miUnexpectedBreakpointsBreakWhenInsideRegion: TRadioButton;
     cbUseDBVMDebugger: TRadioButton;
+    cbUseGDBServer: TRadioButton;
     rbMacDebugThreadLevel: TRadioButton;
     cbUseMacDebugger: TRadioButton;
     rbMacDebugTaskLevel: TRadioButton;
@@ -176,6 +202,8 @@ type
     spbUp: TSpeedButton;
     Languages: TTabSheet;
     TabSheet1: TTabSheet;
+    tsGDBDebug: TTabSheet;
+    tsSymbols: TTabSheet;
     tsMacDebuggerInterface: TTabSheet;
     tsLua: TTabSheet;
     tsSigning: TTabSheet;
@@ -239,14 +267,23 @@ type
     procedure btnSetFontClick(Sender: TObject);
     procedure btnSelectLanguageClick(Sender: TObject);
     procedure cbAskIfTableHasLuascriptChange(Sender: TObject);
+    procedure cbAttachDebuggerToRosettaOnProcessOpenChange(Sender: TObject);
     procedure cbDontusetempdirChange(Sender: TObject);
     procedure cbDebuggerInterfaceChange(Sender: TObject);
+    procedure cbGDBWriteCode2Change(Sender: TObject);
+    procedure cbGDBWriteCodeChange(Sender: TObject);
     procedure cbKernelOpenProcessChange(Sender: TObject);
     procedure cbKernelQueryMemoryRegionChange(Sender: TObject);
+    procedure cbLaunchGDBServerChange(Sender: TObject);
     procedure cbOverrideDefaultFontChange(Sender: TObject);
     procedure cbProcessWatcherChange(Sender: TObject);
+    procedure cbSynchronizeSymbolsChange(Sender: TObject);
+    procedure cbUseIntelPTChange(Sender: TObject);
+    procedure cbUseLLDBForMacChange(Sender: TObject);
+    procedure cbUseRosettaDebugserverChange(Sender: TObject);
     procedure cbWriteLoggingOnChange(Sender: TObject);
     procedure CheckBox1Change(Sender: TObject);
+    procedure cbRecordIPTForFindWhatRoutinesChange(Sender: TObject);
     procedure EditBufSizeKeyPress(Sender: TObject; var Key: Char);
     procedure Default1Click(Sender: TObject);
     procedure FormChangeBounds(Sender: TObject);
@@ -267,7 +304,6 @@ type
     procedure cbUpdatefoundListClick(Sender: TObject);
     procedure AboutLabelClick(Sender: TObject);
     procedure cbHideAllWindowsClick(Sender: TObject);
-    procedure btnExcludeProcessesClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure cbKernelQueryMemoryRegionClick(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
@@ -365,7 +401,9 @@ uses
   aboutunit, MainUnit, MainUnit2, frmExcludeHideUnit, ModuleSafetyUnit,
   frmProcessWatcherUnit, CustomTypeHandler, processlist, commonTypeDefs,
   frmEditHistoryUnit, Globals, fontSaveLoadRegistry, CETranslator,
-  MemoryBrowserFormUnit, DBK32functions, feces, UnexpectedExceptionsHelper;
+  MemoryBrowserFormUnit, DBK32functions, feces, UnexpectedExceptionsHelper,
+  cpuidUnit, DPIHelper, symbolsync, ProcessHandlerUnit, GDBServerDebuggerInterface,
+  DebuggerInterfaceAPIWrapper;
 
 
 type TLanguageEntry=class
@@ -402,7 +440,7 @@ end;
 
 resourcestring
   strProcessWatcherWillPreventUnloader='Enabling the process watcher will prevent the unloader from working';
-  rsYouHavenTSelectedAnyMemoryTypeThisWillResultInChea = 'You haven''t selected any memory type. This will result in Cheat Engine finding NO memory! Are you stupid?';
+  rsYouHavenTSelectedAnyMemoryTypeThisWillResultInChea = 'You haven''t selected any memory type. This will result in '+strCheatEngine+' finding NO memory! Are you stupid?';
   rsIsNotAValidInterval = '%s is not a valid interval';
   rsTheScanbufferSizeHasToBeGreaterThan0 = 'The scanbuffer size has to be greater than 0';
   rsTheValueForTheKeypollIntervalIsInvalid = 'the value for the keypoll interval (%s is invalid';
@@ -419,6 +457,7 @@ resourcestring
   rsTimeCritical = 'TimeCritical';
   rsGeneralSettings = 'General Settings';
   rsTools = 'Tools';
+  rsSymbols = 'Symbols';
   rsHotkeys = 'Hotkeys';
   rsUnrandomizer = 'Unrandomizer';
   rsScanSettings = 'Scan Settings';
@@ -430,7 +469,7 @@ resourcestring
   rsSigning = 'Signing';
   rsNoName = 'No Name';
   rsAttachToForegroundProcess = 'Attach to current foreground process';
-  rsPopupHideCheatEngine = 'Popup/Hide cheat engine';
+  rsPopupHideCheatEngine = 'Popup/Hide '+strCheatEngine;
   rsPauseTheSelectedProcess = 'Pause the selected process';
   rsToggleTheSpeedhack = 'Toggle the speedhack';
   rsSpeedhackSpeed = 'Speedhack speed';
@@ -456,7 +495,7 @@ resourcestring
   rsChangedValue = 'Changed Value';
   rsUnchangedValue = 'Unchanged Value';
   rsNewLanguageSet = 'New language set';
-  rsRestartCE = 'It is recommended to restart Cheat Engine for this change to take effect';
+  rsRestartCE = 'It is recommended to restart '+strCheatEngine+' for this change to take effect';
   rsFailureToOpenRegistry = 'Failure to open the registry entry';
   rsSpectreWarning = 'WARNING! Making kernelmode possible will slightly increase the speed of your system, BUT it will make you vulnerable to Spectre attacks'#13#10'Are you ok with this? (You can later re-enable this protection)';
   rsSpectreRestore = 'Your protection has been restored. Please restart your '
@@ -465,6 +504,8 @@ resourcestring
   rsSpectreRegistryChanged = 'The registry keys has been changed accordingly. '
     +' Reboot your system to make it take effect';
   rsAllCustomTypes = 'All Custom Types';
+  rsInvalidSymbolSyncTimer = 'The provided value for the symbol sync timer is '
+    +'invalid';
 
 
 procedure TformSettings.btnOKClick(Sender: TObject);
@@ -486,6 +527,8 @@ var processhandle2: Thandle;
     cpu: string;
     WriteLogSize: integer;
     s: string;
+
+    symsynctimer: integer;
 
 begin
   try
@@ -542,7 +585,12 @@ begin
     if (error<>0) or (repeatDelay<0) then raise exception.Create(Format(rsIsNotAValidInterval, [edtRepeatDelay.text]));
 
 
-
+    if cbSymbolSyncInterval.Enabled and cbSymbolSyncInterval.Checked then
+    begin
+      val(edtSymbolSyncTimer.text, symsynctimer, error);
+      if error<>0 then
+        raise exception.create(rsInvalidSymbolSyncTimer);
+    end;
 
     buffersize:=bufsize*1024;
 
@@ -554,9 +602,11 @@ begin
     reg:=Tregistry.Create;
     try
       Reg.RootKey := HKEY_CURRENT_USER;
-      if Reg.OpenKey('\Software\Cheat Engine',true) then
+      if Reg.OpenKey('\Software\'+strCheatEngine,true) then
       begin
         //write the settings
+        reg.Writebool('RunAsAdmin',cbAlwaysAttemptToLaunchAsAdmin.checked);
+
         reg.WriteInteger('Saved Stacksize', stacksize);
 
         reg.writebool('Show processlist in mainmenu', cbShowProcesslist.checked);
@@ -608,11 +658,25 @@ begin
         reg.writebool('Can Step Kernelcode',cbCanStepKernelcode.checked);
 
         reg.WriteInteger('Buffersize',bufsize);
-        reg.WriteBool('Center on popup',cbCenterOnPopup.checked);
+        reg.WriteBool('Center on popup',frameHotkeyConfig.cbCenterOnPopup.checked);
         reg.WriteInteger('Update interval',updateinterval);
         reg.WriteInteger('Freeze interval',freezeinterval);
         reg.writebool('Show values as signed',cbShowAsSigned.checked);
 
+        reg.WriteBool('Skip PDB', cbSkipPDB.checked);
+        skippdb:=cbSkipPDB.checked;
+
+        reg.WriteBool('Use Intel PT For Debug', cbUseIntelPT.Checked);
+        useintelptfordebug:=cbUseIntelPT.Checked;
+
+        reg.writebool('Hide IPT Capability', cbHideIPTCapability.checked);
+        hideiptcapability:=cbHideIPTCapability.checked;
+
+        reg.WriteBool('Log IPT buffers inside FindWhat results', cbRecordIPTForFindWhatRoutines.Checked);
+        inteliptlogfindwhatroutines:=cbRecordIPTForFindWhatRoutines.Checked;
+
+        reg.writeInteger('Max IPT Size', cbIPTTraceSize.ItemIndex);
+        maxiptconfigsize:=cbIPTTraceSize.ItemIndex;
 
         reg.WriteBool('Replace incomplete opcodes with NOPS',replacewithnops.checked);
         reg.WriteBool('Ask for replace with NOPS',askforreplacewithnops.checked);
@@ -653,18 +717,22 @@ begin
         reg.WriteBool('Get process icons',cbProcessIcons.Checked);
         GetProcessIcons:=cbProcessIcons.Checked;
 
+        reg.WriteBool('Ask to clear list on process opening',cbAskToClearListOnOpen.Checked);
         reg.WriteBool('Pointer appending', cbOldPointerAddMethod.checked);
 
         reg.writebool('skip PAGE_NOCACHE',cbSkip_PAGE_NOCACHE.Checked);
         reg.writebool('skip PAGE_WRITECOMBINE',cbSkip_PAGE_WRITECOMBINE.Checked);
         reg.writebool('Pause when scanning on by default',cbPauseWhenScanningOnByDefault.Checked);
+        reg.writebool('Save memoryregion scansettings', cbSaveMemoryregionScanSettings.checked);
+
+
 
 
         reg.WriteInteger('Repeat Delay',repeatDelay);
         Globals.repeatDelay:=repeatDelay;
 
 
-        reg.WriteBool('Hide all windows',cbHideAllWindows.checked);
+        reg.WriteBool('Hide all windows',frameHotkeyConfig.cbHideAllWindows.checked);
         reg.WriteBool('Really hide all windows',temphideall);
 
 
@@ -685,7 +753,27 @@ begin
         onlyfront:=not temphideall;
 
 
+        reg.WriteBool('SymbolSync', cbSynchronizeSymbols.checked);
+        reg.WriteBool('SymbolSync_ClearSymbolsOnNewProcess', cbClearSymbolsOnProcessOpen.checked);
+        reg.WriteBool('SymbolSync_DontDeleteSymbols', cbDontDeleteSymbols.checked);
+        reg.WriteBool('SymbolSync_SynchronizePeriodically', cbSymbolSyncInterval.checked);
+        if cbSymbolSyncInterval.checked then
+          reg.WriteInteger('SymbolSync_SynchronizeInterval', symsynctimer);
 
+        syncsymbols:=cbSynchronizeSymbols.checked;
+        symsync_ClearSymbolListWhenOpeningADifferentProcess:=cbClearSymbolsOnProcessOpen.checked;
+        symsync_DontDeleteSymbolsWhenSynchronizing:=cbDontDeleteSymbols.checked;
+
+        if cbSymbolSyncInterval.checked then
+        begin
+          symsync_Interval:=symsynctimer;
+          if syncsymbols then
+            EnableSymbolSyncThread
+          else
+            DisableSymbolSyncThread;
+        end
+        else
+          DisableSymbolSyncThread;
 
         //check the module list
 
@@ -729,7 +817,7 @@ begin
 
           //save the hotkeylist
           reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('Attach to foregroundprocess Hotkey',{$ifndef windows}bintohexs({$endif}frameHotkeyConfig.newhotkeys[0][0],10){$ifndef windows}){$endif};
-          reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('Show Cheat Engine Hotkey',{$ifndef windows}bintohexs({$endif}frameHotkeyConfig.newhotkeys[1][0],10){$ifndef windows}){$endif};
+          reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('Show '+strCheatEngine+' Hotkey',{$ifndef windows}bintohexs({$endif}frameHotkeyConfig.newhotkeys[1][0],10){$ifndef windows}){$endif};
           reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('Pause process Hotkey',{$ifndef windows}bintohexs({$endif}frameHotkeyConfig.newhotkeys[2][0],10){$ifndef windows}){$endif};
           reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('Toggle speedhack Hotkey',{$ifndef windows}bintohexs({$endif}frameHotkeyConfig.newhotkeys[3][0],10){$ifndef windows}){$endif};
 
@@ -849,6 +937,23 @@ begin
         reg.WriteBool('Use Kernel Debugger',cbKdebug.checked);
         reg.WriteBool('Use Global Debug Routines',cbGlobalDebug.checked);
         reg.WriteBool('Use DBVM Debugger', cbUseDBVMDebugger.checked);
+        reg.WriteBool('Use GDBServer Debugger', cbUseGDBServer.checked);
+        reg.writebool('Launch GDB server', cbLaunchGDBServer.checked);
+        reg.WriteString('GDBServer launch command', edtGDBServerCommand.text);
+        reg.WriteString('GDBPort', edtGDBPort.text);
+        reg.writebool('GDBWriteCode', cbGDBWriteCode.checked);
+        GDBWriteProcessMemoryCodeOnly:=cbGDBWriteCode.checked;
+
+        {$ifdef darwin}
+        reg.writeBool('UseRosettaDebugserver', cbUseRosettaDebugserver.checked);
+        reg.writeBool('AttachDebuggerToRosettaOnProcessOpen', cbAttachDebuggerToRosettaOnProcessOpen.checked);
+        reg.writeBool('AskToAttachToRosetta', cbAskToAttachToRosetta.checked);
+        reg.WriteString('RosettaDebugserverLaunchCommand',edtRosettaDebugserverLaunchCommand.text);
+        reg.WriteString('RosettaDebugserverPort',edtRosettaDebugserverPort.text);
+        if (currentdebuggerinterface is TGDBServerDebuggerInterface) and isProcessTranslated(processid) then
+          GDBWriteProcessMemoryCodeOnly:=true;
+        {$endif}
+
 
         reg.writeBool('DBVMBP Trigger COW', cbDBVMDebugTriggerCOW.checked);
         reg.writeBool('DBVMBP This Process Only', cbDBVMDebugTargetedProcessOnly.checked);
@@ -953,7 +1058,7 @@ begin
 
         if cbOverrideDefaultFont.checked then
         begin
-          if reg.OpenKey('\Software\Cheat Engine\Font', true) then
+          if reg.OpenKey('\Software\'+strCheatEngine+'\Font', true) then
             SaveFontToRegistry(fontdialog1.Font, reg);
         end;
 
@@ -975,11 +1080,12 @@ begin
       mainform.tLuaGCActive.enabled:=cbLuaGarbageCollectAll.checked;
       mainform.tLuaGCPassive.enabled:=cbLuaPassiveGarbageCollection.checked;
 
+
   {$ifndef net}
 
       //save the tools hotkeys
-      reg.DeleteKey('\Software\Cheat Engine\Tools');
-      if Reg.OpenKey('\Software\Cheat Engine\Tools',true) then
+      reg.DeleteKey('\Software\'+strCheatEngine+'\Tools');
+      if Reg.OpenKey('\Software\'+strCheatEngine+'\Tools',true) then
       begin
         for i:=0 to lvTools.Items.Count-1 do
         begin
@@ -998,8 +1104,8 @@ begin
       end;
 
       //save the plugins
-      reg.DeleteKey('\Software\Cheat Engine\Plugins'+cpu);
-      if Reg.OpenKey('\Software\Cheat Engine\Plugins'+cpu,true) then
+      reg.DeleteKey('\Software\'+strCheatEngine+'\Plugins'+cpu);
+      if Reg.OpenKey('\Software\'+strCheatEngine+'\Plugins'+cpu,true) then
       begin
         for i:=0 to clbplugins.Count-1 do
         begin
@@ -1100,6 +1206,8 @@ end;
 procedure TformSettings.btnMakeKernelDebugPossibleClick(Sender: TObject);
 var reg: TRegistry;
 begin
+  if requiresAdmin('Registry access to system config data')=false then exit;
+
   if messagedlg(rsSpectreWarning,mtWarning,[mbYes,mbNo],0,mbNo)=mrYes then
   begin
     reg:=tregistry.create;
@@ -1130,6 +1238,9 @@ end;
 procedure TformSettings.btnRestoreKernelProtectionClick(Sender: TObject);
 var reg: TRegistry;
 begin
+  if requiresAdmin('Registry access to system config data')=false then exit;
+
+
   reg:=tregistry.create;
   try
     Reg.RootKey := HKEY_LOCAL_MACHINE;
@@ -1167,18 +1278,20 @@ var
   old: string;
 
   settingsvis: boolean;
+  index: integer;
 begin
+  index:=lbLanguages.ItemIndex;
 
-  if lbLanguages.ItemIndex<>-1 then
+  if index<>-1 then
   begin
-    l:=TLanguageEntry(lbLanguages.Items.Objects[lbLanguages.ItemIndex]);
+    l:=TLanguageEntry(lbLanguages.Items.Objects[index]);
     if l<>nil then
       preferedLanguage:=l.foldername
     else
       preferedLanguage:='*';
 
     try
-      ini:=TIniFile.Create(cheatenginedir+'languages' + DirectorySeparator+'language.ini');
+      ini:=TIniFile.Create(cheatenginedir+{$ifdef darwin}'..'+DirectorySeparator+{$endif}'Languages' + DirectorySeparator+'language.ini');
       try
         old:=ini.ReadString('Language','PreferedLanguage','');
         ini.WriteString('Language','PreferedLanguage',preferedLanguage);
@@ -1198,31 +1311,17 @@ begin
     except
     end;
   end;
-
-
-  {settingsvis:=formSettings.Visible;
-
-  MemoryBrowser.Free;
-  MainForm.free;
-
-  Application.CreateForm(TMainForm, MainForm);
-  Application.CreateForm(TMemoryBrowser, MemoryBrowser);
-
-  MainForm.show;
-
-  Application.CreateForm(TformSettings, formSettings);
-
-  LoadSettingsFromRegistry;
-
-  if settingsvis then
-    modalresult:=formsettings.ShowModal;  }
-
-
 end;
 
 procedure TformSettings.cbAskIfTableHasLuascriptChange(Sender: TObject);
 begin
 
+end;
+
+procedure TformSettings.cbAttachDebuggerToRosettaOnProcessOpenChange(
+  Sender: TObject);
+begin
+  cbAskToAttachToRosetta.enabled:=cbAttachDebuggerToRosettaOnProcessOpen.checked;
 end;
 
 procedure TformSettings.cbDontusetempdirChange(Sender: TObject);
@@ -1258,11 +1357,31 @@ begin
   begin
     pcDebugConfig.ActivePageIndex:=4;
     pcDebugConfig.TabIndex:=4;
+  end
+  else
+  if cbUseGDBServer.checked then
+  begin
+    pcDebugConfig.ActivePageIndex:=5;
+    pcDebugConfig.TabIndex:=5;
   end;
 
   rbPageExceptions.enabled:=not cbKDebug.checked; //currently the kerneldebugger doesn't handle pageexceptions yet (can be added, but not right now)
   if rbPageExceptions.checked and not rbPageExceptions.enabled then
     rbDebugAsBreakpoint.checked:=true;
+end;
+
+procedure TformSettings.cbGDBWriteCode2Change(Sender: TObject);
+begin
+  cbGDBWriteCode.OnChange:=nil;
+  cbGDBWriteCode.Checked:=cbGDBWriteCode2.checked;
+  cbGDBWriteCode.OnChange:=cbGDBWriteCodeChange;
+end;
+
+procedure TformSettings.cbGDBWriteCodeChange(Sender: TObject);
+begin
+  cbGDBWriteCode2.OnChange:=nil;
+  cbGDBWriteCode2.Checked:=cbGDBWriteCode.checked;
+  cbGDBWriteCode2.OnChange:=cbGDBWriteCode2Change;
 end;
 
 procedure TformSettings.cbKernelOpenProcessChange(Sender: TObject);
@@ -1275,6 +1394,14 @@ begin
 
 end;
 
+procedure TformSettings.cbLaunchGDBServerChange(Sender: TObject);
+begin
+  Label26.enabled:=cbLaunchGDBServer.Checked;
+  edtGDBServerCommand.enabled:=cbLaunchGDBServer.Checked;
+  edtGDBPort.enabled:=cbLaunchGDBServer.Checked;
+  Label27.enabled:=cbLaunchGDBServer.Checked;
+end;
+
 procedure TformSettings.cbOverrideDefaultFontChange(Sender: TObject);
 begin
   btnSetFont.enabled:=cbOverrideDefaultFont.Checked;
@@ -1283,6 +1410,38 @@ end;
 procedure TformSettings.cbProcessWatcherChange(Sender: TObject);
 begin
   cbProcessWatcherOpensHandles.enabled:=cbProcessWatcher.Checked;
+end;
+
+procedure TformSettings.cbSynchronizeSymbolsChange(Sender: TObject);
+begin
+  cbSymbolSyncInterval.enabled:=cbSynchronizeSymbols.checked;
+  cbClearSymbolsOnProcessOpen.enabled:=cbSynchronizeSymbols.checked;
+  cbDontDeleteSymbols.enabled:=cbSynchronizeSymbols.checked;
+end;
+
+procedure TformSettings.cbUseIntelPTChange(Sender: TObject);
+begin
+  cbRecordIPTForFindWhatRoutines.visible:=cbUseIntelPT.checked;
+  lblMaxIPTSize.visible:=cbUseIntelPT.checked;
+  cbIPTTraceSize.visible:=cbUseIntelPT.checked;
+
+  cbHideIPTCapability.visible:=not cbUseIntelPT.checked;
+end;
+
+procedure TformSettings.cbUseLLDBForMacChange(Sender: TObject);
+begin
+
+end;
+
+procedure TformSettings.cbUseRosettaDebugserverChange(Sender: TObject);
+begin
+  cbAttachDebuggerToRosettaOnProcessOpen.Enabled:=cbUseRosettaDebugserver.checked;
+  cbAskToAttachToRosetta.enabled:=cbUseRosettaDebugserver.checked;
+  lblRosettaLaunchCommand.enabled:=cbUseRosettaDebugserver.checked;
+  lblRosettaPort.enabled:=cbUseRosettaDebugserver.checked;
+  edtRosettaDebugserverLaunchCommand.enabled:=cbUseRosettaDebugserver.checked;
+  edtRosettaDebugserverPort.enabled:=cbUseRosettaDebugserver.checked;
+  cbGDBWriteCode2.enabled:=cbUseRosettaDebugserver.checked;
 end;
 
 procedure TformSettings.cbWriteLoggingOnChange(Sender: TObject);
@@ -1294,6 +1453,11 @@ end;
 procedure TformSettings.CheckBox1Change(Sender: TObject);
 begin
   PreventDebuggerDetection:=checkbox1.checked;
+end;
+
+procedure TformSettings.cbRecordIPTForFindWhatRoutinesChange(Sender: TObject);
+begin
+
 end;
 
 
@@ -1487,6 +1651,8 @@ begin
 
   unexpectedExceptionHandlerChanged:=false;
 
+  DPIHelper.AdjustComboboxSize(cbIPTTraceSize,canvas);
+
 end;
 
 procedure TformSettings.cbShowDisassemblerClick(Sender: TObject);
@@ -1580,20 +1746,9 @@ end;
 
 procedure TformSettings.cbHideAllWindowsClick(Sender: TObject);
 begin
-  btnExcludeProcesses.enabled:=cbHideallWindows.Checked;
+  frameHotkeyConfig.btnExcludeProcesses.enabled:=frameHotkeyConfig.cbHideallWindows.Checked;
 end;
 
-procedure TformSettings.btnExcludeProcessesClick(Sender: TObject);
-begin
-  {$ifndef net}
-
-  with tfrmExcludeHide.create(self) do
-  begin
-    showmodal;
-    free;
-  end;
-  {$endif}
-end;
 
 procedure TformSettings.cleanupLanguageList;
 var
@@ -1618,6 +1773,7 @@ end;
 procedure TformSettings.ScanForLanguages;
 var
   i: integer;
+  index: integer;
   f: TStringList;
   n: string;
   e: TLanguageEntry;
@@ -1657,25 +1813,31 @@ begin
   mainform.miLanguages.Add(mi);
 
   f:=TStringList.Create;
-  FindAllDirectories(f,CheatEngineDir+'\languages',false);
+  {$ifdef darwin}
+  OutputDebugString('ScanForLanguages: Looking in '+CheatEngineDir+{$ifdef darwin}PathDelim+'..'+{$endif}PathDelim+'Languages');
+  {$endif}
+  FindAllDirectories(f,CheatEngineDir+{$ifdef darwin}PathDelim+'..'+{$endif}PathDelim+'Languages',false);
+
+  index:=1;
   for i:=0 to f.Count-1 do
   begin
     n:=f[i];
-    if not (fileexists(n+'\cheatengine.po') or fileexists(n+'\cheatengine-x86_64.po') or fileexists(n+'\cheatengine-i386.po')) then
+    if not (fileexists(n+pathsep+'cheatengine.po') or fileexists(n+PathDelim+'cheatengine-x86_64.po') or fileexists(n+PathDelim+'cheatengine-i386.po')) then
       continue;
 
 
     e:=TLanguageEntry.Create;
     e.foldername:=ExtractFileName(n);
 
-    if FileExists(f[i]+'\name.txt') then
-      n:=ReadFileToString(f[i]+'\name.txt')
+    if FileExists(f[i]+PathDelim+'name.txt') then
+      n:=ReadFileToString(f[i]+PathDelim+'name.txt')
     else
       n:=e.foldername;
 
     mi:=TMenuItem.Create(mainform.MainMenu1);
     mi.Caption:=n;
-    mi.Tag:=i+1;
+    mi.Tag:=index;
+    inc(index);
     mi.RadioItem:=true;
     if uppercase(e.foldername)=uppercase(curr) then
     begin
@@ -1722,22 +1884,26 @@ var i: integer;
 
   KVAShadowInfo: dword;
   rl: DWORD;
-
 begin
   tvMenuSelection.Items[0].Data:=GeneralSettings;
   tvMenuSelection.Items[1].Data:=tsTools;
-  tvMenuSelection.Items[2].Data:=tsHotkeys;
-  tvMenuSelection.Items[3].Data:=Unrandomizer;
-  tvMenuSelection.Items[4].Data:=ScanSettings;
-  tvMenuSelection.Items[5].Data:=Plugins;
-  tvMenuSelection.Items[6].Data:=Languages;
-  tvMenuSelection.Items[7].Data:=self.Assembler;
-  tvMenuSelection.Items[8].Data:=tsLua;
-  tvMenuSelection.Items[9].Data:=Extra;
-  tvMenuSelection.Items[10].Data:=tsSigning;
+  tvMenuSelection.Items[2].Data:=tsSymbols;
+  tvMenuSelection.Items[3].Data:=tsHotkeys;
+  tvMenuSelection.Items[4].Data:=Unrandomizer;
+  tvMenuSelection.Items[5].Data:=ScanSettings;
+  tvMenuSelection.Items[6].Data:=Plugins;
+  tvMenuSelection.Items[7].Data:=Languages;
+  tvMenuSelection.Items[8].Data:=self.Assembler;
+  tvMenuSelection.Items[9].Data:=tsLua;
+  tvMenuSelection.Items[10].Data:=Extra;
+  tvMenuSelection.Items[11].Data:=tsSigning;
 
-  tvMenuSelection.Items[6].Visible:=false;
-  tvMenuSelection.Items[10].Visible:={$ifdef windows}cansigntables{$else}false{$endif};
+  tvMenuSelection.Items[7].Visible:=false;
+  tvMenuSelection.Items[11].Visible:={$ifdef windows}cansigntables{$else}false{$endif};
+
+  {$ifdef altname}
+  tvMenuSelection.Items[10].Visible:=false; //the pussy version does not have kernelmode tools
+  {$endif}
 
   pcSetting.ShowTabs:=false;
 
@@ -1800,15 +1966,16 @@ begin
 
   tvMenuSelection.Items[0].Text:=rsGeneralSettings;
   tvMenuSelection.Items[1].Text:=rsTools;
-  tvMenuSelection.Items[2].Text:=rsHotkeys;
-  tvMenuSelection.Items[3].Text:=rsUnrandomizer;
-  tvMenuSelection.Items[4].Text:=rsScanSettings;
-  tvMenuSelection.Items[5].Text:=rsPlugins;
-  tvMenuSelection.Items[6].Text:=rsLanguages;
-  tvMenuSelection.Items[7].Text:=rsDebuggerOptions;
-  tvMenuSelection.Items[8].Text:=rsLuaOptions;
-  tvMenuSelection.Items[9].Text:=rsExtra;
-  tvMenuSelection.Items[10].Text:=rsSigning;
+  tvMenuSelection.Items[2].Text:=rsSymbols;
+  tvMenuSelection.Items[3].Text:=rsHotkeys;
+  tvMenuSelection.Items[4].Text:=rsUnrandomizer;
+  tvMenuSelection.Items[5].Text:=rsScanSettings;
+  tvMenuSelection.Items[6].Text:=rsPlugins;
+  tvMenuSelection.Items[7].Text:=rsLanguages;
+  tvMenuSelection.Items[8].Text:=rsDebuggerOptions;
+  tvMenuSelection.Items[9].Text:=rsLuaOptions;
+  tvMenuSelection.Items[10].Text:=rsExtra;
+  tvMenuSelection.Items[11].Text:=rsSigning;
 
 
 
@@ -1855,7 +2022,16 @@ begin
       btnMakeKernelDebugPossible.visible:=true;
     end;
   end;
+
+
+
+  cbUseIntelPT.enabled:=systemSupportsIntelPT;
+  cbHideIPTCapability.visible:=systemSupportsIntelPT;
+  {$else}
+  cbUseIntelPT.visible:=false;
+  cbHideIPTCapability.visible:=false;
   {$endif}
+
 
   //check if it should be disabled
   reg:=tregistry.create;
@@ -1933,9 +2109,13 @@ begin
 
   cbUseMacDebugger.checked:=true;
 
+
+
   {$else}
   cbUseMacDebugger.visible:=false;
   {$endif}
+
+  pcSetting.ActivePageIndex:=0;
 end;
 
 procedure TformSettings.cbKernelQueryMemoryRegionClick(Sender: TObject);

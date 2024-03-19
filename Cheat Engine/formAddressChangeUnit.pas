@@ -258,6 +258,7 @@ type
     { Public declarations }
     index: integer;
     index2: integer;
+    focusDescription: boolean;
     property memoryrecord: TMemoryRecord read fMemoryRecord write setMemoryRecord;
     property vartype: TVariableType read getVartype write setVartype;
     property length: integer read gLength write sLength;
@@ -1441,6 +1442,9 @@ end;
 procedure TformAddressChange.DelayedResize;
 begin
   AdjustHeight;
+
+  clientwidth:=clientwidth+1; //force an update
+  clientwidth:=clientwidth-1;
 end;
 
 procedure TformAddressChange.PointerInfoResize(sender: TObject);
@@ -1527,6 +1531,7 @@ begin
   constraints.MinHeight:=btncancel.top+btnCancel.height+6;
   constraints.MaxHeight:=btncancel.top+btnCancel.height+6;
   clientheight:=btncancel.top+btnCancel.height+6;
+ // clientwidth:=
 end;
 
 procedure TFormAddressChange.ApplyMemoryRecord;
@@ -1574,6 +1579,7 @@ begin
      or (fMemoryRecord.vartype = vtQword)
      or (fMemoryRecord.vartype = vtSingle)
      or (fMemoryRecord.vartype = vtDouble)
+     or (fMemoryRecord.vartype = vtByteArray)
      then
   begin
     cbHex.checked:=fMemoryRecord.ShowAsHex;
@@ -1819,7 +1825,11 @@ begin
     loadedWidth:=true;
   end;
 
-  //autosize:=true;
+  if focusDescription then
+    editDescription.SetFocus;
+
+
+   //autosize:=true;
 end;
 
 procedure TformAddressChange.miCopyFinalAddressToClipboardClick(Sender: TObject);

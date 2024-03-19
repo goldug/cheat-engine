@@ -13,7 +13,7 @@ uses
   {$endif}
   LCLIntf, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, Buttons, registry, CEFuncProc, ExtCtrls, LResources,
-  comCtrls, menus, hotkeyhandler, MemoryRecordUnit, commonTypeDefs, strutils, betterControls;
+  comCtrls, menus, hotkeyhandler, MemoryRecordUnit, commonTypeDefs, strutils, betterControls, LMessages;
 
 type
 
@@ -31,6 +31,7 @@ type
     cbFreezedirection: TComboBox;
     cbForceEnglishActivate: TCheckBox;
     cbForceEnglishDeactivate: TCheckBox;
+    cbOnlyWhileDown: TCheckBox;
     edtActivateText: TEdit;
     edtDeactivateText: TEdit;
     edtDescription: TEdit;
@@ -73,8 +74,10 @@ type
       Shift: TShiftState; X, Y: Integer);
     procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
+    procedure FormShortCut(var Msg: TLMKey; var Handled: Boolean);
     procedure FormShow(Sender: TObject);
     procedure ListView1DblClick(Sender: TObject);
+    procedure ListView1ItemChecked(Sender: TObject; Item: TListItem);
     procedure ListView1SelectItem(Sender: TObject; Item: TListItem;
       Selected: Boolean);
     procedure miAddSoundClick(Sender: TObject);
@@ -123,6 +126,8 @@ resourcestring
   rsTextToSpeechHint = 'The text to speak'#13#10'{Description} = The description of the hotkey'#13#10'{MRDescription} = The description field of the memory record'#13#10'{MRValue} = The value of the memory record';
   rsDefaultActivated = '%s Activated';
   rsDefaultDeactivated = '%s Deactivated';
+  rsDeactivateOnRelease = 'Deactivate on release';
+  rsRestoreToOriginalOnRelease = 'Restore to original on release';
 
 
 function THotkeyform.getBtnOKCustomButton: TCustomButton;
@@ -213,7 +218,7 @@ begin
     listview1.clear;
     fmemrec:=x;
 
-
+    caption:=caption+' : '+memrec.Description;
 
     for i:=0 to memrec.HotkeyCount-1 do
     begin
@@ -229,6 +234,8 @@ begin
         li.SubItems.Add(hk.description);
 
         lblid.caption:=inttostr(hk.id);
+
+        li.checked:=hk.Active;
 
         li.Data:=hk;
       end;
@@ -248,6 +255,7 @@ begin
 
   pagecontrol1.ActivePage:=tabsheet2;
   li:=listview1.items.add;
+  li.Checked:=true;
   li.SubItems.add(''); //on hotkey
   li.SubItems.add(''); //value
   li.SubItems.add(''); //description
@@ -331,6 +339,8 @@ begin
   cbDeactivateSoundChange(cbDeactivateSound);
 
   cbFreezedirection.OnSelect(cbFreezedirection);
+
+  cbOnlyWhileDown.checked:=hk.OnlyWhileDown;
 end;
 
 procedure THotKeyForm.btnApplyClick(Sender: TObject);
@@ -343,10 +353,11 @@ begin
     hk.action:=getHotkeyAction;
     hk.value:=edtFreezeValue.text;
     hk.fdescription:=edtDescription.text;
+    hk.fOnlyWhileDown:=cbOnlyWhileDown.checked;
     hk.registerkeys;
   end
   else
-    hk:=memrec.Addhotkey(keys, getHotkeyAction, edtFreezeValue.text, edtDescription.text );
+    hk:=memrec.Addhotkey(keys, getHotkeyAction, edtFreezeValue.text, edtDescription.text, cbOnlyWhileDown.checked );
 
 
 
@@ -385,7 +396,6 @@ begin
   listview1.selected.subitems[1]:=edtFreezeValue.text;
   listview1.selected.subitems[2]:=edtDescription.text;
   listview1.Selected.data:=hk;
-
 
   pagecontrol1.ActivePage:=tabsheet1;
   listview1.Enabled:=true;
@@ -447,11 +457,30 @@ begin
   begin
     onpossible:=cbFreezeDirection.itemindex in [0,1];
     offpossible:=cbFreezeDirection.itemindex in [0,2];
+
+    if onpossible then
+    begin
+      cbOnlyWhileDown.Caption:=rsDeactivateOnRelease;
+      cbOnlyWhileDown.visible:=true;
+    end
+    else
+      cbOnlyWhileDown.visible:=false;
   end
   else
   begin
     onpossible:=cbFreezeDirection.itemindex in [0,1,2,3,5,6,7];
     offpossible:=cbFreezeDirection.itemindex in [0,1,2,4];
+
+    if cbFreezeDirection.itemindex in [0,1,2,3,5] then
+    begin
+      case cbFreezeDirection.itemindex of
+        0, 1, 2, 3: cbOnlyWhileDown.Caption:=rsDeactivateOnRelease;
+        5: cbOnlyWhileDown.Caption:=rsRestoreToOriginalOnRelease;
+      end;
+      cbOnlyWhileDown.visible:=true;
+    end
+    else
+      cbOnlyWhileDown.visible:=false;
   end;
 
   lblActivateSound.enabled:=onpossible;
@@ -461,6 +490,8 @@ begin
   lblDeactivateSound.enabled:=offpossible;
   cbDeactivateSound.enabled:=offpossible;
   sbPlayDeactivate.enabled:=offpossible;
+
+
 
 end;
 
@@ -610,6 +641,15 @@ begin
   {$endif}
 end;
 
+procedure THotKeyForm.FormShortCut(var Msg: TLMKey; var Handled: Boolean);
+begin
+  if (pagecontrol1.ActivePage<>tabsheet2) and (Msg.CharCode=VK_ESCAPE) then
+  begin
+    handled:=true;
+    close;
+  end;
+end;
+
 procedure THotKeyForm.FormShow(Sender: TObject);
 var
   i, maxwidth: integer;
@@ -705,6 +745,14 @@ procedure THotKeyForm.ListView1DblClick(Sender: TObject);
 begin
   if btnEditHotkey.enabled then
     btnEditHotkey.click;
+end;
+
+procedure THotKeyForm.ListView1ItemChecked(Sender: TObject; Item: TListItem);
+var hk: TMemoryRecordHotkey;
+begin
+  hk:=TMemoryRecordHotkey(item.data);
+  if hk<>nil then
+    hk.active:=item.checked;
 end;
 
 procedure THotKeyForm.ListView1SelectItem(Sender: TObject; Item: TListItem;

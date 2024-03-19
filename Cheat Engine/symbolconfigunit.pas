@@ -73,6 +73,7 @@ resourcestring
 
 procedure SymbolUpdate(item: TUserdefinedSymbolCallbackPart=suUserdefinedSymbol);
 begin
+  //can be called from other threads
   if frmsymbolhandler<>nil then
   begin
     frmsymbolhandler.updatepart:=item;
@@ -180,9 +181,9 @@ begin
   symhandler.DeleteUserdefinedSymbol(symbolname);
   symhandler.AddUserdefinedSymbol(edtaddress.Text,symbolname);
 
-  li:=listview1.Items.Add;
-  li.Caption:=symbolname;
-  li.SubItems.Add(edtaddress.Text);
+//  li:=listview1.Items.Add;
+//  li.Caption:=symbolname;
+ // li.SubItems.Add(edtaddress.Text);
 
   edtSymbolname.SetFocus;
   edtSymbolname.SelectAll;

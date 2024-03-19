@@ -5,6 +5,8 @@ program cheatengine;
 uses
   {$ifdef darwin}
   cthreads,
+
+
   {$endif}
   first,
   {$IFDEF UNIX}{$IFDEF UseCThreads}
@@ -117,7 +119,11 @@ uses
   dotnethost, rttihelper, cefreetype, LuaDotNetPipe, LuaRemoteExecutor,
   autoassemblercode, CSharpCompiler, newhintwindow, memrecDataStructures,
   LuaCECustomButton, DBVMDebuggerInterface, frmCR3SwitcherUnit, tcclib,
-  sourcecodehandler, frmSourceDisplayUnit;
+  sourcecodehandler, frmSourceDisplayUnit, disassemblerarm64, contexthandler,
+  DisAssemblerARM32, frmAnchorEditor, disassemblerArm32Thumb, iptnative,
+  iptlogdisplay, LuaVirtualStringTree, userbytedisassembler,
+  LuaNetworkInterface, libcepack, symbolsync, gdbserverconnectdialog,
+  GDBServerDebuggerInterface;
 
 {$R cheatengine.res}
 {$IFDEF windows}
@@ -131,7 +137,11 @@ uses
 {$ENDIF}
 
 {$R sounds.res}
+{$ifdef altname}
+{$R Images_alt.res}
+{$else}
 {$R Images.res}
+{$endif}
 
 
 
@@ -265,6 +275,10 @@ begin
   end;
 end;
 
+procedure setScaledTrue;
+begin
+  application.Scaled:=true; //put it here because the lazarus ide will just nuke it on setting change otherwise
+end;
 
 var
   i: integer;
@@ -274,8 +288,10 @@ var
 
   path: string;
   noautorun: boolean;
+
 begin
-  Application.Title:='Cheat Engine 7.3';
+  Application.Title:='Cheat Engine 7.5';
+ //'Cheat Engine 7.3';
   {$ifdef darwin}
   macPortFixRegPath;
   {$endif}
@@ -310,6 +326,9 @@ begin
     end;
   end;
 
+  if istrainer then setScaledTrue;
+
+
   if not istrainer then
   begin
     //check the user preferences
@@ -320,8 +339,18 @@ begin
     r := TRegistry.Create;
 
     r.RootKey := HKEY_CURRENT_USER;
-    if r.OpenKey('\Software\Cheat Engine',false) then
+
+    if r.OpenKey('\Software\'+strCheatEngine,false) then
     begin
+      if r.ValueExists('RunAsAdmin') then
+      begin
+        if r.readbool('RunAsAdmin') then
+        begin
+          askAboutRunningAsAdmin:=false;
+          requiresAdmin;
+        end;
+      end;
+
       if r.ValueExists('Override Default Font') then
       begin
         if r.ReadBool('Override Default Font') then
@@ -385,7 +414,6 @@ begin
   handleparameters;
 
   OutputDebugString('Starting CE');
-
 
 
   Application.Run;

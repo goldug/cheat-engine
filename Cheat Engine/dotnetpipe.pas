@@ -85,6 +85,7 @@ type
     fieldtype: dword;
     name: widestring;
     fieldTypeClassName: widestring;
+    attribs: dword;
     isStatic: boolean;
   end;
 
@@ -158,7 +159,7 @@ type
 
 implementation
 
-uses DotNetTypes;
+uses DotNetTypes, networkInterfaceApi;
 
 const
   CMD_TARGETPROCESS=0;
@@ -299,7 +300,7 @@ var
 
   fi: TFieldInfo;
   inserted: boolean;
-  isStatic: byte;
+
 begin
   read(typedata.objecttype, sizeof(typedata.objecttype));
 
@@ -342,8 +343,9 @@ begin
       read(fi.offset, sizeof(dword));
       read(fi.fieldtype, sizeof(dword));
 
-      read(isStatic,1);
-      fi.isStatic:=isstatic<>0;
+      read(fi.attribs,sizeof(dword));
+
+      fi.isStatic:=(fi.attribs and fdStatic)=fdStatic;
 
       read(fieldnamesize, sizeof(fieldnamesize));
       getmem(fieldname, fieldnamesize+4);
@@ -883,6 +885,8 @@ var
 {$endif}
 begin
   {$IFDEF windows}
+  if getConnection<>nil then exit(false);
+
   if fConnected then
     disconnect;
 

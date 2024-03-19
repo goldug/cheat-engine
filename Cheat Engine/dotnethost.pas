@@ -116,7 +116,6 @@ begin
     if not assigned(CLRCreateInstance) then
       raise EDotNetException.create('CLRCreateInstance not found in MSCorEE.dll');
 
-
     if CLRCreateInstance(CLSID_CLRMetaHost, IID_ICLRMetaHost, mh)<>S_OK then
       raise EDotNetException.create('Failed to create CLRMetaHost instance');
 
@@ -136,7 +135,7 @@ begin
       raise EDotNetException.create('DotNet '+versionstring+' does not seem to be loadable');
 
     if rti.GetInterface(CLSID_CLRRuntimeHost, IID_ICLRRuntimeHost, hostu)<>S_OK then
-      raise EDotNetException.create('Failure getting the RuntimeHost interface for dotner version '+versionstring);
+      raise EDotNetException.create('Failure getting the RuntimeHost interface for dotnet version '+versionstring);
 
     host:=ICLRRuntimeHost(hostu);
 

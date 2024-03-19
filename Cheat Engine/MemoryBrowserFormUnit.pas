@@ -6,7 +6,7 @@ interface
 
 uses
   {$ifdef darwin}
-  macport, LCLType, macportdefines,
+  LCLType,
   {$endif}
   {$ifdef windows}
   jwawindows, windows,imagehlp,
@@ -21,7 +21,8 @@ uses
   disassemblerComments, multilineinputqueryunit, frmMemoryViewExUnit,
   LastDisassembleData, ProcessHandlerUnit, commonTypeDefs, binutils,
   fontSaveLoadRegistry, LazFileUtils, ceregistry, frmCR3SwitcherUnit,
-  betterControls, ScrollBoxEx;
+  betterControls, ScrollBoxEx, contexthandler,iptlogdisplay
+  {$ifdef darwin}, macport, macportdefines{$endif} ;
 
 
 type
@@ -47,8 +48,17 @@ type
     ESPlabel: TLabel;
     FSlabel: TLabel;
     GSlabel: TLabel;
+    miClearCache: TMenuItem;
+    miIPTLog: TMenuItem;
+    miShowRelativeDisassembler: TMenuItem;
+    miArchX86: TMenuItem;
+    miArchArm: TMenuItem;
+    miArchAutodetect: TMenuItem;
     MenuItem4: TMenuItem;
     copyBytesAndOpcodesAndComments: TMenuItem;
+    MenuItem5: TMenuItem;
+    MenuItem6: TMenuItem;
+    miArchitecture: TMenuItem;
     miCR3Switcher: TMenuItem;
     miShowSectionAddresses: TMenuItem;
     miOpenInDissectData: TMenuItem;
@@ -67,7 +77,7 @@ type
     mvImageList: TImageList;
     MenuItem1: TMenuItem;
     MenuItem10: TMenuItem;
-    MenuItem11: TMenuItem;
+    miSearchForAccessibleStrings: TMenuItem;
     MenuItem12: TMenuItem;
     MenuItem13: TMenuItem;
     MenuItem14: TMenuItem;
@@ -83,19 +93,19 @@ type
     MenuItem17: TMenuItem;
     MenuItem18: TMenuItem;
     MenuItem19: TMenuItem;
-    MenuItem20: TMenuItem;
+    miLoadTrace: TMenuItem;
     dispChar: TMenuItem;
     dispShorts: TMenuItem;
     DispLongs: TMenuItem;
-    MenuItem21: TMenuItem;
-    MenuItem22: TMenuItem;
-    MenuItem23: TMenuItem;
-    MenuItem24: TMenuItem;
-    MenuItem25: TMenuItem;
+    miTextEncoding: TMenuItem;
+    miWatchMemoryPageAccess: TMenuItem;
+    miSetUnsetBookmark: TMenuItem;
+    miGotoBookmark: TMenuItem;
+    miUserWriteInteger: TMenuItem;
     miUltimap2: TMenuItem;
-    MenuItem27: TMenuItem;
-    MenuItem28: TMenuItem;
-    MenuItem29: TMenuItem;
+    miWatchList: TMenuItem;
+    miStackTraceSep: TMenuItem;
+    miCompareStructures: TMenuItem;
     miCodeFilter: TMenuItem;
     miExceptionIgnoreList: TMenuItem;
     N19: TMenuItem;
@@ -159,7 +169,7 @@ type
     miAddEBP: TMenuItem;
     miAddESP: TMenuItem;
     miFindWhatWrites: TMenuItem;
-    MenuItem2: TMenuItem;
+    miSelectCurrentFunction: TMenuItem;
     MenuItem3: TMenuItem;
     miDataBreakPointMenu: TMenuItem;
     miWatchAccess: TMenuItem;
@@ -185,9 +195,9 @@ type
     Goto1: TMenuItem;
     debuggerpopup: TPopupMenu;
     oflabel: TLabel;
-    Panel2: TPanel;
-    Panel6: TPanel;
-    Panel7: TPanel;
+    pnlGeneralRegisters: TPanel;
+    pnlExtraRegisters: TPanel;
+    pnlFlags: TPanel;
     pflabel: TLabel;
     pmRegisters: TPopupMenu;
     pmDebugToolbar: TPopupMenu;
@@ -226,15 +236,16 @@ type
     tbToggleBreakpoint: TToolButton;
     tbRunTill: TToolButton;
     tbSeparator3: TToolButton;
+    tbRunUnhandled: TToolButton;
     View1: TMenuItem;
     Stacktrace1: TMenuItem;
     ScrollBox1: TScrollBox;
-    Label14: TLabel;
-    Shape1: TShape;
-    Label15: TLabel;
-    Shape2: TShape;
-    Label16: TLabel;
-    Shape3: TShape;
+    lblRegisters: TLabel;
+    sRegisters: TShape;
+    lblFlags: TLabel;
+    sFlags: TShape;
+    lblSpecial: TLabel;
+    sSpecial: TShape;
     miDebugRun: TMenuItem;
     Threadlist1: TMenuItem;
     Assemble1: TMenuItem;
@@ -341,13 +352,18 @@ type
     procedure Makepagewritable1Click(Sender: TObject);
     procedure memorypopupPopup(Sender: TObject);
     procedure MenuItem10Click(Sender: TObject);
-    procedure MenuItem11Click(Sender: TObject);
+    procedure miClearCacheClick(Sender: TObject);
+    procedure miSearchForAccessibleStringsClick(Sender: TObject);
     procedure MenuItem12Click(Sender: TObject);
     procedure MenuItem14Click(Sender: TObject);
+    procedure MenuItem8Click(Sender: TObject);
+    procedure miArchChangeClick(Sender: TObject);
     procedure miCR3SwitcherClick(Sender: TObject);
     procedure miDBVMFindoutwhataddressesthisinstructionaccessesClick(Sender: TObject);
     procedure MenuItem4Click(Sender: TObject);
+    procedure miIPTLogClick(Sender: TObject);
     procedure miOpenInDissectDataClick(Sender: TObject);
+    procedure miShowRelativeDisassemblerClick(Sender: TObject);
     procedure miShowSectionAddressesClick(Sender: TObject);
     procedure miUndoLastEditClick(Sender: TObject);
     procedure miFollowInHexviewClick(Sender: TObject);
@@ -360,12 +376,12 @@ type
     procedure miUltimapClick(Sender: TObject);
     procedure MenuItem17Click(Sender: TObject);
     procedure MenuItem18Click(Sender: TObject);
-    procedure MenuItem20Click(Sender: TObject);
-    procedure MenuItem22Click(Sender: TObject);
-    procedure MenuItem25Click(Sender: TObject);
+    procedure miLoadTraceClick(Sender: TObject);
+    procedure miWatchMemoryPageAccessClick(Sender: TObject);
+    procedure miUserWriteIntegerClick(Sender: TObject);
     procedure miUltimap2Click(Sender: TObject);
-    procedure MenuItem27Click(Sender: TObject);
-    procedure MenuItem29Click(Sender: TObject);
+    procedure miWatchListClick(Sender: TObject);
+    procedure miCompareStructuresClick(Sender: TObject);
     procedure miAddRefClick(Sender: TObject);
     procedure miBreakOnExceptionsClick(Sender: TObject);
     procedure miChangeProtectionClick(Sender: TObject);
@@ -383,6 +399,7 @@ type
     procedure miUnexpectedExceptionBreakOptionClick(Sender: TObject);
     procedure pmRegistersPopup(Sender: TObject);
     procedure pmStacktracePopup(Sender: TObject);
+    procedure RegisterViewResize(Sender: TObject);
     procedure SetBookmarkClick(Sender: TObject);
     procedure miTextEncodingClick(Sender: TObject);
     procedure miReferencedFunctionsClick(Sender: TObject);
@@ -390,7 +407,7 @@ type
     procedure miCopyBytesOnlyClick(Sender: TObject);
     procedure miDissectData2Click(Sender: TObject);
     procedure miPointerSpiderClick(Sender: TObject);
-    procedure MenuItem2Click(Sender: TObject);
+    procedure miSelectCurrentFunctionClick(Sender: TObject);
     procedure miDataBreakPointMenuClick(Sender: TObject);
     procedure miWatchAccessClick(Sender: TObject);
     procedure miWatchWriteClick(Sender: TObject);
@@ -424,8 +441,7 @@ type
     procedure Timer2Timer(Sender: TObject);
     procedure miReplacewithnopsClick(Sender: TObject);
 
-    procedure ShowDebugToolbar;
-    procedure HideDebugToolbar;
+
 
     procedure FControl1KeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure FControl1KeyPress(Sender: TObject; var Key: Char);
@@ -450,7 +466,7 @@ type
     procedure HexEditExit(Sender: TObject);
     procedure HexEditKeyDown(Sender: TObject; var Key: Word;
       Shift: TShiftState);
-    procedure EAXLabelDblClick(Sender: TObject);
+    procedure RegisterLabelDblClick(Sender: TObject);
     procedure miDebugBreakClick(Sender: TObject);
     procedure Reservememory1Click(Sender: TObject);
     procedure Savememoryregion1Click(Sender: TObject);
@@ -512,6 +528,7 @@ type
     procedure DisplayTypeClick(Sender: TObject);
     procedure Showjumplines1Click(Sender: TObject);
     procedure Onlyshowjumplineswithinrange1Click(Sender: TObject);
+    procedure View1Click(Sender: TObject);
     procedure Watchmemoryallocations1Click(Sender: TObject);
     procedure Maxstacktracesize1Click(Sender: TObject);
     procedure All1Click(Sender: TObject);
@@ -535,6 +552,10 @@ type
     R13Label: TLabel;
     R14Label: TLabel;
     R15Label: TLabel;
+
+    xlabel: array [16..31] of tlabel;
+
+
 
 
     posloadedfromreg: boolean;
@@ -612,10 +633,14 @@ type
     overridebreakpointmethod: boolean;
     preferedF5BreakpointMethod: TBreakpointMethod;
 
-    followRegister: integer;
+    followRegister: PContextElement_register;
 
     fcr3: qword;
     fcr3switcher: TfrmCR3Switcher;
+
+    procedure ShowDebugToolbar;
+    procedure HideDebugToolbar;
+
     procedure cr3switcherCR3Change(sender: TObject);
     procedure SetStacktraceSize(size: integer);
     procedure setShowDebugPanels(state: boolean);
@@ -627,8 +652,6 @@ type
     procedure setHexviewAddress(a: ptrUint);
     function getHexviewAddress:ptrUint;
     procedure hexviewKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-    procedure setContextValueByTag(value: ptruint; tag: integer);
-    function  getContextValueByTag(tag: integer): ptruint;
     procedure ApplyFollowRegister;
     procedure setCR3(newcr3: qword);
     function ReadProcessMemory(hProcess: THandle; lpBaseAddress, lpBuffer: Pointer; nSize: size_t; var lpNumberOfBytesRead: PTRUINT): BOOL;
@@ -647,18 +670,23 @@ type
     disassemblerview: TDisassemblerview;
     hexview: THexview;
 
-    lastdebugcontextarm: TARMCONTEXT;
-    lastdebugcontext: _Context;
+    context: pointer;
+    contexthandler: TContextInfo;
+
+
     laststack: pbytearray;
 
     disassembler: boolean;
     cancelsearch: boolean;
 
     ischild: boolean; //determines if it's the main memorybrowser or a child
-    backlist: TStack;
+//    backlist: TStack;
 
+    frmiptlog: TfrmIPTLogDisplay;
 
+    showdebugpaneltimer: TTimer;
 
+    procedure showDebugPaneltimertimer(sender: TObject);
 
     procedure setRegisterPanelFont(f: TFont);
 
@@ -687,7 +715,6 @@ type
     procedure miDifferenceClick(Sender: TObject);
     procedure miStopDifferenceClick(Sender: TObject);
     procedure Scrollboxscroll(sender: TObject);
-    procedure AddToDisassemblerBackList(address: pointer);
 
     procedure createcr3switcher;
     property cr3switcher: TfrmCR3Switcher read fcr3switcher;
@@ -730,19 +757,20 @@ uses Valuechange, MainUnit, debugeventhandler, findwindowunit,
   frmSaveMemoryRegionUnit, frmLoadMemoryunit, inputboxtopunit,
   formAddToCodeList, frmFillMemoryUnit, frmCodecaveScannerUnit, FoundCodeUnit,
   frmSelectionlistunit, symbolconfigunit, frmFloatingPointPanelUnit,
-  frmTracerUnit, dissectcodeunit, driverlist, formChangedAddresses, peINFOunit,
+  frmTracerUnit, dissectcodeunit, DriverList, formChangedAddresses, PEInfounit,
   frmGDTunit, frmIDTunit, frmDisassemblyscanunit, ServiceDescriptorTables,
   frmReferencedStringsUnit, frmReferencedFunctionsUnit, Structuresfrm,
-  Structuresfrm2, pointerscannerfrm, frmDebugEventsUnit, frmPagingUnit,
-  frmluaengineunit, disassemblerviewlinesunit, frmBreakpointConditionunit,
-  frmStringMapUnit, frmStringpointerscanUnit, frmFilePatcherUnit,
+  StructuresFrm2, pointerscannerfrm, frmDebugEventsUnit, frmPagingUnit,
+  frmluaengineunit, disassemblerviewlinesunit, frmBreakpointConditionUnit,
+  frmStringMapUnit, frmStringPointerScanUnit, frmFilePatcherUnit,
   frmUltimapUnit, frmUltimap2Unit, frmAssemblyScanUnit, MemoryQuery,
   AccessedMemory, Parsers, GnuAssembler, frmEditHistoryUnit, frmWatchlistUnit,
   vmxfunctions, frmstructurecompareunit, globals, UnexpectedExceptionsHelper,
   frmExceptionRegionListUnit, frmExceptionIgnoreListUnit, frmcodefilterunit,
   frmDBVMWatchConfigUnit, DBK32functions, DPIHelper, DebuggerInterface,
   DebuggerInterfaceAPIWrapper, BreakpointTypeDef, CustomTypeHandler,
-  frmSourceDisplayUnit, sourcecodehandler, tcclib;
+  frmSourceDisplayUnit, sourcecodehandler, tcclib, mainunit2, GDBServerDebuggerInterface
+  {$ifdef ONEBYTEJUMPS}, autoassemblerexeptionhandler{$endif};
 
 
 resourcestring
@@ -776,7 +804,7 @@ resourcestring
   rsYouWantToGiveAnAdditional32BitParameterWillShowUpI = 'You want to give an additional 32-bit parameter? (Will show up in (R)/(E)BX)';
   rsPleaseEnterAValidHexadecimalValue = 'Please enter a valid hexadecimal value';
   rsPleaseTargetAProcessFirst = 'Please target a process first';
-  rsPleaseTargetAnotherProcess = 'Start another version of Cheat Engine and attach to that instead';
+  rsPleaseTargetAnotherProcess = 'Start another version of '+strCheatEngine+' and attach to that instead';
   rsDoYouWantToExecuteAFunctionOfTheDll = 'Do you want to execute a function of the dll?';
   rsInjectDll = 'Inject dll';
   rsSelectTheFunctionYouWantToExecute = 'Select the function you want to execute';
@@ -814,6 +842,7 @@ resourcestring
   rsSetBreakpoint = 'Set breakpoint';
   rsRemoveBreakpoint = 'Remove breakpoint';
   rsInjectDYLIB = 'Inject DYLIB';
+  rsSetCustomAlignment = 'Set custom alignment';
 
 //property functions:
 function TMemoryBrowser.getShowValues: boolean;
@@ -837,27 +866,17 @@ var
   cw: integer;
   ew: integer;
 begin
+
   oldstackwidth:=pnlStacktrace.Width;
   oldpanel3width:=panel3.width;
-  {if state then
-  begin
-    //resizing should change the stack, not the hexview
-    panel3.Align:=alLeft;
-    splitter3.Align:=alLeft;
-    pnlStacktrace.align:=alclient;
-    splitter3.ResizeControl:=pnlStacktrace;
-  end
-  else
-  begin
-    splitter3.ResizeControl:=panel3;
-    pnlStacktrace.align:=alRight;
-    splitter3.Align:=alRight;
-    panel3.Align:=alclient;
-  end; }
+
 
   FShowDebugPanels:=state;
+
+
   registerview.Visible:=state;
   pnlStacktrace.Visible:=state;
+
   splitter2.Visible:=state;
   splitter3.Visible:=state;
 
@@ -867,13 +886,14 @@ end;
 procedure TMemoryBrowser.SetStacktraceSize(size: integer);
 var x: ptrUint;
 begin
+  if (context=nil) or (contexthandler=nil) then exit;
   FStacktraceSize:=size;
 
   if laststack<>nil then
     freememandnil(laststack);
 
   laststack:=getmem(size);
-  readprocessmemory(processhandle, pointer(lastdebugcontext.{$ifdef cpu64}rsp{$else}esp{$endif}), laststack, size, x);
+  readprocessmemory(processhandle, pointer(contexthandler.StackPointerRegister^.getValue(context)), laststack, size, x);
 
   reloadStacktrace;
 end;
@@ -921,13 +941,35 @@ begin
 end;
 
 procedure TMemoryBrowser.miLockRowsizeClick(Sender: TObject);
+var
+  rs: string;
+  waslocked: boolean;
+  newsize: integer;
 begin
-  miLockRowsize.Checked:=not miLockRowsize.Checked;
+  waslocked:=hexview.LockedRowSize<>0;
 
-  if miLockRowsize.Checked then
-    hexview.LockRowsize
+
+  hexview.LockRowsize; //fills in lockedRowSize
+  rs:=inttostr(hexview.LockedRowSize);
+
+  if InputQuery('Alignment','Enter the custom alignment (<=0 is automatic)', rs) then
+  begin
+    try
+      newsize:=StrToInt(rs);
+      if newsize<=0 then newsize:=0;
+
+      hexview.LockedRowSize:=newsize;
+    except
+      if waslocked=false then
+        hexview.UnlockRowsize;
+    end;
+  end
   else
-    hexview.UnlockRowsize;
+  begin
+    if waslocked=false then
+      hexview.UnlockRowsize;
+  end;
+
 end;
 
 procedure TMemoryBrowser.ShowDebugToolbar;
@@ -935,12 +977,14 @@ begin
   tbDebug.Visible:=true;
   tbDebug.Tag:=0;
   Showdebugtoolbar1.Checked:=true;
+  showDebugPanels:=true;
 end;
 
 procedure TMemoryBrowser.HideDebugToolbar;
 begin
   tbDebug.Visible:=false;
   Showdebugtoolbar1.Checked:=false;
+  showDebugPanels:=false;
 end;
 
 procedure TMemoryBrowser.Showdebugtoolbar1Click(Sender: TObject);
@@ -1055,7 +1099,7 @@ end;
 procedure TMemoryBrowser.memorypopupPopup(Sender: TObject);
 var
   m: TMemorybrowser;
-  mi: Menus.TMenuItem;
+  mi: menus.tmenuitem;
   i,j: integer;
 
   islocked: boolean;
@@ -1066,6 +1110,9 @@ var
 
 
 begin
+  miClearCache.visible:=(CurrentDebuggerInterface<>nil) and (CurrentDebuggerInterface is TGDBServerDebuggerInterface) and GDBReadProcessMemory;
+
+
   //update customtypes
 
 
@@ -1128,20 +1175,20 @@ begin
     begin
       if not hexview.isShowingDifference then
       begin
-        mi:=TMenuItem.Create(miShowDifference);
-        mi.Caption:=Format(rsBetween, [m.Caption]);
-        mi.OnClick:=miDifferenceClick;
-        mi.tag:=i;
-        miShowDifference.Add(mi);
+        miClearCache:=TMenuItem.Create(miShowDifference);
+        miClearCache.Caption:=Format(rsBetween, [m.Caption]);
+        miClearCache.OnClick:=miDifferenceClick;
+        miClearCache.tag:=i;
+        miShowDifference.Add(miClearCache);
       end;
 
       if not islocked then
       begin
-        mi:=TMenuItem.Create(miLock);
-        mi.caption:=m.caption;
-        mi.OnClick:=miLockMemviewClick;
-        mi.tag:=i;
-        miLock.add(mi);
+        miClearCache:=TMenuItem.Create(miLock);
+        miClearCache.caption:=m.caption;
+        miClearCache.OnClick:=miLockMemviewClick;
+        miClearCache.tag:=i;
+        miLock.add(miClearCache);
       end;
     end;
 
@@ -1198,6 +1245,14 @@ begin
   miWatchBPDBVM.enabled:=(CurrentDebuggerInterface=nil) or (dbcExceptionBreakpoint in CurrentDebuggerInterface.DebuggerCapabilities);
   miWatchBPDBVM.visible:={$ifdef windows}hasEPTSupport{$else}false{$endif};
 
+  if hexview.LockedRowSize<>0 then
+    miLockRowsize.caption:=rsSetCustomAlignment+' ('+inttostr(hexview.LockedRowSize)+')'
+  else
+    miLockRowsize.caption:=rsSetCustomAlignment;
+
+  miChangeProtectionRWE.enabled:=SystemSupportsWritableExecutableMemory;
+  miChangeProtectionRWE.visible:=SystemSupportsWritableExecutableMemory;
+
 end;
 
 
@@ -1209,7 +1264,13 @@ begin
   frmStringMap.show;
 end;
 
-procedure TMemoryBrowser.MenuItem11Click(Sender: TObject);
+procedure TMemoryBrowser.miClearCacheClick(Sender: TObject);
+begin
+  if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then
+    TGDBServerDebuggerInterface(CurrentDebuggerInterface).ClearRPMCachePage(hexview.Address);
+end;
+
+procedure TMemoryBrowser.miSearchForAccessibleStringsClick(Sender: TObject);
 begin
   if frmStringPointerscan=nil then
     frmStringpointerscan:=Tfrmstringpointerscan.create(MemoryBrowser);
@@ -1235,18 +1296,34 @@ begin
   EnableWindowsSymbols(true);
 end;
 
-procedure TMemorybrowser.setCR3(newcr3: qword);
+procedure TMemoryBrowser.MenuItem8Click(Sender: TObject);
 begin
+
+end;
+
+
+
+procedure TMemorybrowser.setCR3(newcr3: qword);
+var oldcr3: qword;
+begin
+  oldcr3:=fcr3;
+  if debuggerthread<>nil then debuggerthread.execlocation:=4120;
+
   fcr3:=newcr3;
   disassemblerview.cr3:=fcr3;
+  if debuggerthread<>nil then debuggerthread.execlocation:=4121;
   hexview.cr3:=fcr3;
+  if debuggerthread<>nil then debuggerthread.execlocation:=4122;
 
-  if newcr3<>0 then
+  if (newcr3<>oldcr3) then
   begin
+    if debuggerthread<>nil then debuggerthread.execlocation:=4123;
     createcr3switcher;
+    if debuggerthread<>nil then debuggerthread.execlocation:=4124;
     fcr3switcher.addCR3ToList(newcr3);
-
+    if debuggerthread<>nil then debuggerthread.execlocation:=4125;
     fcr3switcher.Show;
+    if debuggerthread<>nil then debuggerthread.execlocation:=4126;
   end;
 
   caption:=caption;
@@ -1285,6 +1362,53 @@ begin
   tbDebug.Tag:=-1;
 end;
 
+procedure TMemoryBrowser.miIPTLogClick(Sender: TObject);
+var log: pointer;
+    logsize: integer;
+begin
+  {$IFDEF WINDOWS}
+  log:=nil;
+  if (debuggerthread<>nil) and (debuggerthread.CurrentThread<>nil) then
+  begin
+    //broken state
+    if debuggerthread.CurrentThread.getLastIPTLog(log,logsize)=false then
+    begin
+      if useintelptfordebug=false then
+      begin
+        if messagedlg('This will require the IPT feature to be enabled in the debugger. Activate it now? (You will need a new break to record a log)', mtConfirmation, [mbyes,mbno],0)=mryes then
+        begin
+          useintelptfordebug:=true;
+          debuggerthread.initIntelPTTracing;
+        end;
+      end
+      else
+      begin
+        if debuggerthread.initIntelPTTracing then
+          messagedlg('Error retrieving the IPT log. Try again later', mtError, [mbok],0)
+        else
+          messagedlg('Error activating the IPT log', mtError, [mbok],0)
+      end;
+      exit;
+    end;
+
+    if frmiptlog=nil then
+    begin
+      frmiptlog:=TfrmIPTLogDisplay.Create(MemoryBrowser);
+      frmiptlog.OnClose:=nil;
+    end;
+
+    frmiptlog.show;
+    if log<>nil then
+    begin
+      frmiptlog.loadlog(debuggerthread.CurrentThread.ThreadId.ToHexString+'-'+GetTickCount.ToHexString,log,logsize, contexthandler.InstructionPointerRegister^.getValue(context));
+      freemem(log);
+    end;
+
+  end;
+  {$ENDIF}
+
+end;
+
 procedure TMemoryBrowser.miOpenInDissectDataClick(Sender: TObject);
 begin
   //create it
@@ -1294,6 +1418,27 @@ begin
     show;
   end;
 
+end;
+
+procedure TMemoryBrowser.miShowRelativeDisassemblerClick(Sender: TObject);
+begin
+  if miShowRelativeDisassembler.checked then
+  begin
+    if disassemblerview.SelectedAddress<>0 then
+    begin
+      disassemblerview.RelativeBase:=disassemblerview.SelectedAddress;
+      disassemblerview.UseRelativeBase:=true;
+    end
+    else
+    begin
+      disassemblerview.RelativeBase:=disassemblerview.TopAddress;
+      disassemblerview.UseRelativeBase:=true;
+    end;
+  end
+  else
+    disassemblerview.UseRelativeBase:=false;
+
+  disassemblerview.update;
 end;
 
 
@@ -1308,16 +1453,16 @@ end;
 
 procedure TMemoryBrowser.ApplyFollowRegister;
 begin
-  if followRegister<>-1 then
-    hexview.address:=getContextValueByTag(followRegister);
+  if (followRegister<>nil) and (context<>nil) then
+    hexview.address:=followRegister^.getValue(context);
 end;
 
 procedure TMemoryBrowser.miFollowInHexviewClick(Sender: TObject);
 begin
   if miFollowInHexview.checked then
-    followRegister:=pmRegisters.PopupComponent.Tag
+    followRegister:=PContextElement_register(pmRegisters.PopupComponent.Tag)
   else
-    followRegister:=-1;
+    followRegister:=nil;
 end;
 
 procedure TMemoryBrowser.miSetSpecificBreakpointClick(Sender: TObject);
@@ -1406,7 +1551,7 @@ begin
   TfrmMemoryViewEx.create(self).show;
 end;
 
-procedure TMemoryBrowser.MenuItem20Click(Sender: TObject);
+procedure TMemoryBrowser.miLoadTraceClick(Sender: TObject);
 var t: Tfrmtracer;
 begin
   t:=TFrmTracer.create(self,false,true);
@@ -1426,7 +1571,7 @@ begin
 
 end;
 
-procedure TMemoryBrowser.MenuItem22Click(Sender: TObject);
+procedure TMemoryBrowser.miWatchMemoryPageAccessClick(Sender: TObject);
 begin
   if frmAccessedMemory=nil then
     frmAccessedMemory:=TfrmAccessedMemory.Create(application);
@@ -1434,7 +1579,7 @@ begin
   frmAccessedMemory.Show;
 end;
 
-procedure TMemoryBrowser.MenuItem25Click(Sender: TObject);
+procedure TMemoryBrowser.miUserWriteIntegerClick(Sender: TObject);
 begin
   if frmEditHistory=nil then
     frmEditHistory:=tfrmEditHistory.create(application);
@@ -1451,16 +1596,16 @@ begin
   frmUltimap2.show;
 end;
 
-procedure TMemoryBrowser.MenuItem27Click(Sender: TObject);
+procedure TMemoryBrowser.miWatchListClick(Sender: TObject);
 begin
   if frmWatchlist=nil then
     frmWatchlist:=tfrmWatchlist.create(Application);
 
-  frmWatchlist.UpdateContext(@lastdebugcontext);
+  frmWatchlist.UpdateContext(context);
   frmWatchlist.show;
 end;
 
-procedure TMemoryBrowser.MenuItem29Click(Sender: TObject);
+procedure TMemoryBrowser.miCompareStructuresClick(Sender: TObject);
 begin
   if frmStructureCompare=nil then
     frmStructureCompare:=tfrmStructureCompare.create(application);
@@ -1581,7 +1726,7 @@ end;
 
 procedure TMemoryBrowser.pmRegistersPopup(Sender: TObject);
 begin
-  miFollowInHexview.checked:=(followRegister<>-1) and (pmRegisters.PopupComponent<>nil) and (pmRegisters.PopupComponent.Tag=followRegister);
+  miFollowInHexview.checked:=(followRegister<>nil) and (pmRegisters.PopupComponent<>nil) and (pmRegisters.PopupComponent.Tag=ptruint(followRegister));
 end;
 
 procedure TMemoryBrowser.pmStacktracePopup(Sender: TObject);
@@ -1613,6 +1758,16 @@ begin
     if not haserror then
       miAddRef.caption:=format('(ref+*) Ref will be %x',[x]);
   end;
+end;
+
+procedure TMemoryBrowser.RegisterViewResize(Sender: TObject);
+begin
+  {$ifndef darwin}
+  if scrollbox1.VertScrollBar.IsScrollBarVisible then
+    sbShowFloats.Left:=scrollbox1.VertScrollBar.ClientSizeWithBar-sbShowFloats.Width
+  else
+    sbShowFloats.Left:=scrollbox1.VertScrollBar.ClientSizeWithoutBar-sbShowFloats.Width;
+  {$endif}
 end;
 
 procedure TMemoryBrowser.miAddRefClick(Sender: TObject);
@@ -1780,6 +1935,8 @@ begin
   disassemblerview.SelectedAddress:=newaddress;
 end;
 
+
+
 procedure TMemoryBrowser.Makepagewritable1Click(Sender: TObject);
 begin
 end;
@@ -1862,6 +2019,9 @@ begin
     begin
       initialaddress:=memoryaddress;
       show;
+
+      if initialaddress=0 then //address 0 would normally NOT add a new address, but this is a user specified address, so do it anyhow
+      addColumn;
     end;
   end;
 end;
@@ -1877,7 +2037,7 @@ begin
   frmStringpointerscan.show;
 end;
 
-procedure TMemoryBrowser.MenuItem2Click(Sender: TObject);
+procedure TMemoryBrowser.miSelectCurrentFunctionClick(Sender: TObject);
 var start,stop: ptrUint;
   pa, a: ptruint;
 
@@ -1885,8 +2045,6 @@ var start,stop: ptrUint;
   s: string;
   infloop: integer;
 begin
-  backlist.Push(pointer(disassemblerview.SelectedAddress));
-
   //disassemble the code and find the last address
 //  parametervaluetype:=dvtaddress;
   d:=TDisassembler.create;
@@ -2192,6 +2350,27 @@ begin
   end;
 end;
 
+procedure TMemoryBrowser.miArchChangeClick(Sender: TObject);
+begin
+  if miArchAutodetect.checked then
+    visibleDisassembler.architecture:=darchAutoDetect
+  else
+  if miArchX86.checked then
+    visibleDisassembler.architecture:=darchX86
+  else
+    visibleDisassembler.architecture:=darchArm;
+
+  disassemblerview.Update;
+
+  if ssCtrl in GetKeyShiftState then
+  begin
+    case visibleDisassembler.architecture of
+      darchX86: processhandler.SystemArchitecture:=archX86;
+      darchArm: processhandler.SystemArchitecture:=archArm;
+    end;
+  end;
+end;
+
 procedure TMemoryBrowser.miDisassemblyAutodetectClick(Sender: TObject);
 begin
   if miDisassemblyAutodetect.checked then
@@ -2212,6 +2391,14 @@ begin
   defaultDisassembler.is64bitOverridestate:=visibleDisassembler.is64bitOverridestate;
 
   disassemblerview.update;
+
+  if ssCtrl in GetKeyShiftState then
+  begin
+    if miDisassembly32.checked then
+      processhandler.is64Bit:=false
+    else
+      processhandler.is64Bit:=true;
+  end;
 
 end;
 
@@ -2267,7 +2454,7 @@ end;
 
 procedure TMemoryBrowser.miShowInHexviewClick(Sender: TObject);
 begin
-  hexview.address:=getContextValueByTag(pmRegisters.PopupComponent.Tag);
+  hexview.address:=PContextElement_register(pmRegisters.PopupComponent.Tag)^.getValue(context);
 end;
 
 procedure TMemoryBrowser.miTextPreferencesClick(Sender: TObject);
@@ -2337,6 +2524,8 @@ begin
     cbOriginalRenderingSystem.checked:=UseOriginalRenderingSystem;
     {$endif}
 
+    cbCenterDisassemblerWhenOutsideView.checked:=disassemblerview.CenterOnAddressChangeOutsideView;
+
 
     lblHexNormal.font.color:=hexview.normalFontColor;
     lblHexNormal.color:=hexview.normalBackgroundColor;
@@ -2356,6 +2545,8 @@ begin
     lblHexTopLine.Font.color:=hexview.toplinecolor;
     lblHexSeperator.Font.color:=hexview.seperatorColor;
     lblHexCursor.Font.color:=hexview.cursorcolor;
+    lblHexFadeColor.font.color:=hexview.normalFontColor;
+    lblHexFadeColor.color:=hexview.fadecolor;
 
     lblRegHighLightChange.color:=fChangedRegisterColor;
     lblRegHighLightAccess.color:=fAccessedRegisterColor;
@@ -2380,6 +2571,10 @@ begin
       disassemblerview.jlThickness:=jlThickness;
       disassemblerview.jlSpacing:=jlSpacing;
 
+      disassemblerview.CenterOnAddressChangeOutsideView:=cbCenterDisassemblerWhenOutsideView.checked;
+
+
+
       hexview.HexFont:=fontdialog2.Font;
 
       hexview.normalFontColor:=lblHexNormal.font.color;
@@ -2400,6 +2595,7 @@ begin
       hexview.toplinecolor:=lblHexTopLine.Font.color;
       hexview.seperatorColor:=lblHexSeperator.Font.color;
       hexview.cursorcolor:=lblHexCursor.Font.color;
+      hexview.fadecolor:=lblHexFadeColor.color;
 
       fChangedRegisterColor:=lblRegHighLightChange.color;
       fAccessedRegisterColor:=lblRegHighLightAccess.color;
@@ -2432,7 +2628,8 @@ begin
 
   reg:=Tregistry.Create;
   try
-    if reg.OpenKey('\Software\Cheat Engine\Disassemblerview '+inttostr(screen.PixelsPerInch)+'\',true) then
+
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Disassemblerview '+inttostr(screen.PixelsPerInch)+darkmodestring+'\',true) then
     begin
       reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('colors', {$ifndef windows}bintohexs({$endif}disassemblerview.colors, sizeof(disassemblerview.colors)){$ifndef windows}){$endif};
 
@@ -2447,25 +2644,33 @@ begin
       reg.writeInteger('spaceBelowLines', disassemblerview.SpaceBelowLines);
       reg.writeInteger('jlThickness', disassemblerview.jlThickness);
       reg.writeInteger('jlSpacing', disassemblerview.jlSpacing);
+
+
+      reg.WriteBool('CenterOnAddressChangeOutsideView', disassemblerview.CenterOnAddressChangeOutsideView);
     end;
 
-    if reg.OpenKey('\Software\Cheat Engine\Disassemblerview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,true) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Disassemblerview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,true) then
       SaveFontToRegistry(disassemblerview.font, reg);
 
-    if reg.OpenKey('\Software\Cheat Engine\Hexview '+inttostr(screen.PixelsPerInch),true) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Hexview '+inttostr(screen.PixelsPerInch),true) then
     begin
       reg.writeInteger('spaceBetweenLines', hexview.spaceBetweenLines);
       reg.WriteBool('showStatusBar', hexview.statusbar.Visible);
     end;
 
-    if reg.openkey('\Software\Cheat Engine\Hexview'+darkmodestring,true) then
+    if reg.openkey('\Software\'+strCheatEngine+'\Hexview'+darkmodestring,true) then
+    begin
       reg.{$ifdef windows}WriteBinaryData{$else}WriteString{$endif}('colors', {$ifndef windows}bintohexs({$endif}hexview.colors, sizeof(hexview.colors)){$ifndef windows}){$endif};
+      reg.WriteInteger('SeperaterColor', hexview.fseperatorColor);
+      reg.WriteInteger('CursorColor', hexview.fcursorcolor);
+      reg.WriteInteger('TopLineColor', hexview.ftoplinecolor);
+      reg.WriteInteger('FadeColor', hexview.ffadeColor);
+    end;
 
-
-    if reg.OpenKey('\Software\Cheat Engine\Hexview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,true) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Hexview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,true) then
       SaveFontToRegistry(hexview.hexfont, reg);
 
-    if reg.OpenKey('\Software\Cheat Engine\RegisterView '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,true) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\RegisterView '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,true) then
       SaveFontToRegistry(scrollbox1.Font, reg);
 
   finally
@@ -2558,7 +2763,6 @@ begin
   a:=disassemblerview.getReferencedByLineAtPos(m);
   if a<>0 then
   begin
-    backlist.Push(pointer(disassemblerview.SelectedAddress));
     disassemblerview.SelectedAddress:=a;
     exit;
   end;
@@ -2588,6 +2792,8 @@ var x: array of integer;
   i: integer;
   c: tcolor;
 begin
+
+
   registerpanelfont:=tfont.Create;
 
   MemoryBrowsers.Add(self);
@@ -2615,6 +2821,9 @@ begin
   bookmarks[9].gotoMi:=miGotoBookmark9;
 
 
+  scrollbox1.Font:=mainform.font;
+  scrollbox1.Font.name:='Courier New';
+  scrollbox1.Font.Size:=13;
 
 
   displaytype:=dtByte;
@@ -2654,13 +2863,13 @@ begin
   f:=TFont.create;
   reg:=Tregistry.Create;
   try
-    if reg.OpenKey('\Software\Cheat Engine\Disassemblerview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Disassemblerview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,false) then
     begin
       LoadFontFromRegistry(f, reg);
       disassemblerview.font:=f;
     end;
 
-    if reg.OpenKey('\Software\Cheat Engine\Disassemblerview '+inttostr(screen.PixelsPerInch)+'\',false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Disassemblerview '+inttostr(screen.PixelsPerInch)+darkmodestring+'\',false) then
     begin
       if reg.ValueExists('colors') then
       begin
@@ -2699,10 +2908,13 @@ begin
       if reg.ValueExists('jlSpacing') then
         disassemblerview.jlSpacing:=reg.ReadInteger('jlSpacing');
 
+      if reg.ValueExists('CenterOnAddressChangeOutsideView') then
+        disassemblerview.CenterOnAddressChangeOutsideView:=reg.ReadBool('CenterOnAddressChangeOutsideView');
+
       disassemblerview.reinitialize;
     end;
 
-    if reg.OpenKey('\Software\Cheat Engine\Hexview '+inttostr(screen.PixelsPerInch),false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Hexview '+inttostr(screen.PixelsPerInch),false) then
     begin
       if reg.ValueExists('spaceBetweenLines') then
         hexview.spaceBetweenLines:=reg.ReadInteger('spaceBetweenLines');
@@ -2712,7 +2924,7 @@ begin
 
     end;
 
-    if reg.openkey('\Software\Cheat Engine\Hexview'+darkmodestring,true) then
+    if reg.openkey('\Software\'+strCheatEngine+'\Hexview'+darkmodestring,true) then
     begin
       if reg.ValueExists('colors') then
       begin
@@ -2722,17 +2934,22 @@ begin
         HexToBin(pchar(reg.ReadString('colors')),pchar(@hexview.colors),sizeof(hexview.colors));
         {$endif}
       end;
+
+      if reg.ValueExists('SeperaterColor') then  hexview.fseperatorColor:=reg.ReadInteger('SeperaterColor');
+      if reg.ValueExists('CursorColor') then  hexview.fcursorcolor:=reg.ReadInteger('CursorColor');
+      if reg.ValueExists('TopLineColor') then  hexview.ftoplinecolor:=reg.ReadInteger('TopLineColor');
+      if reg.ValueExists('FadeColor') then  hexview.ffadeColor:=reg.ReadInteger('FadeColor');
     end;
 
 
 
-    if reg.OpenKey('\Software\Cheat Engine\Hexview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Hexview '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,false) then
     begin
       LoadFontFromRegistry(f, reg);
       hexview.hexfont:=f;
     end;
 
-    if reg.OpenKey('\Software\Cheat Engine\RegisterView '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\RegisterView '+inttostr(screen.PixelsPerInch)+'\Font'+darkmodestring,false) then
     begin
       LoadFontFromRegistry(f, reg);
 //      scrollbox1.Font:=f;
@@ -2768,13 +2985,12 @@ begin
   memorybrowserHistory:=TStringList.create;
   assemblerHistory:=TStringList.create;
 
-  backlist:=TStack.create;
-
   showvalues:=true;
   sbShowFloats.left:=scrollbox1.Clientwidth-sbShowFloats.width;
 
   FStacktraceSize:=4096;
   
+
 
   setlength(x, 0);
 
@@ -2805,11 +3021,8 @@ begin
 
     if length(x)>=10 then
     begin
-      if x[8]=1 then
-      begin
-        miLockRowsize.Checked:=true;
+      if x[9]<>0 then
         hexview.LockedRowSize:=x[9];
-      end;
     end;
 
     if length(x)>=11 then
@@ -2829,10 +3042,12 @@ begin
   scrollbox1.OnVScroll:=Scrollboxscroll;
 
   disassemblerview.reinitialize;
-  followRegister:=-1;
+  followRegister:=nil;
 
   {$ifdef darwin}
   InjectDLL1.Caption:=rsInjectDYLIB;
+  miChangeProtectionRWE.enabled:=false; //impossible to set , execute can not go together with write
+  miChangeProtectionRWE.visible:=false;
   {$endif}
 
   if ShouldAppsUseDarkMode() then
@@ -2846,21 +3061,21 @@ begin
     fChangedRegisterColor:=clred;
   end;
 
-  label14.font.color:=clWindowtext;
-  shape1.pen.color:=clWindowtext;
+  lblRegisters.font.color:=clWindowtext;
+  sRegisters.pen.color:=clWindowtext;
 
-  label15.font.color:=clWindowtext;
-  shape2.pen.color:=clWindowtext;
+  lblFlags.font.color:=clWindowtext;
+  sFlags.pen.color:=clWindowtext;
 
-  label16.font.color:=clWindowtext;
-  shape3.Pen.color:=clWindowtext;
+  lblSpecial.font.color:=clWindowtext;
+  sSpecial.Pen.color:=clWindowtext;
 
 
 end;
 
 procedure TMemoryBrowser.Scrollboxscroll(sender: TObject);
 begin
-  sbShowFloats.Top:=max(oflabel.top+oflabel.height+2 , scrollbox1.vertscrollbar.Position+(registerview.ClientHeight div 2)-sbShowFloats.Height div 2);
+
 end;
 
 procedure TMemoryBrowser.Goto1Click(Sender: TObject);
@@ -2879,7 +3094,15 @@ begin
   try
     hexview.address:=getaddress(newaddress);
   except
-    hexview.address:=symhandler.getAddressFromName(newaddress);
+    try
+      hexview.address:=symhandler.getAddressFromName(newaddress);
+    except
+      on e: exception do
+      begin
+        MessageDlg(e.message, mtError,[mbok],0);
+        exit;
+      end
+    end;
   end;
 
   if old<>hexview.address then
@@ -2903,17 +3126,40 @@ end;
 
 procedure TMemoryBrowser.Timer2Timer(Sender: TObject);
 var
+  mm: TMemoryManager;
+  h: THeapStatus;
   rollover: integer;
   timetaken: qword;
+  before, after,diff: int64;
 begin
   if Visible then
   begin
     try
+      GetMemoryManager(mm);
 
       timetaken:=GetTickCount64;
 
-      if hexview<>nil then hexview.update;
-      if disassemblerview<>nil then disassemblerview.Update;
+
+      if hexview<>nil then
+      begin
+        //before:=mm.GetHeapStatus().TotalAllocated;
+        hexview.update;
+       // after:=mm.GetHeapStatus().TotalAllocated;
+       // diff:=after-before;
+       // outputdebugstring(gettickcount64.tostring+':hexview.update: before='+before.ToHexString(1)+' after='+after.ToHexString(1)+' diff='+diff.tostring);
+
+      end;
+
+
+      if disassemblerview<>nil then
+      begin
+       // before:=mm.GetHeapStatus().TotalAllocated;
+        disassemblerview.Update;
+       // after:=mm.GetHeapStatus().TotalAllocated;
+       // diff:=after-before;
+       // outputdebugstring(gettickcount64.tostring+':disassemblerview.update: before='+before.ToHexString(1)+' after='+after.ToHexString(1)+' diff='+diff.tostring);
+
+      end;
 
       //refresh the modulelist
       if processhandler.isNetwork then
@@ -2923,7 +3169,14 @@ begin
 
       lastmodulelistupdate:=(lastmodulelistupdate+1) mod rollover;
       if lastmodulelistupdate=0 then
-        if symhandler<>nil then symhandler.loadmodulelist;
+        if symhandler<>nil then
+        begin
+          //before:=mm.GetHeapStatus().TotalAllocated;
+          symhandler.loadmodulelist;
+          //after:=mm.GetHeapStatus().TotalAllocated;
+          //diff:=after-before;
+          //outputdebugstring(gettickcount64.tostring+':symhandler.loadmodulelist: before='+before.ToHexString(1)+' after='+after.ToHexString(1)+' diff='+diff.tostring);
+        end;
 
       timetaken:=GetTickCount64-timetaken;
       if (timetaken>timer2.interval) and (timer2.interval<5000) then
@@ -2939,6 +3192,7 @@ begin
     except
       on e:exception do
       begin
+        outputdebugstring('memorybrowser timer2 error: '+e.message);
         timer2.enabled:=false;
         MessageDlg('Error in memview update timer:'+e.message, mtError,[mbok],0);
       end;
@@ -3012,12 +3266,31 @@ begin
 end;
 
 procedure TMemoryBrowser.hexviewKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+var a: qword;
+  psize: integer;
+  gotoaddress: qword;
+  x: ptruint;
 begin
   if shift=[ssCtrl] then
   begin
     case key of
       vk_space: //ctrl+space
       begin
+        if hexview.HasSelection then
+        begin
+          psize:=1+hexview.SelectionStop-hexview.selectionstart;
+          if psize>=4 then
+          begin
+            key:=0;
+            if psize>8 then psize:=8;
+
+            if ReadProcessMemory(processhandle, pointer(hexview.SelectionStart), @gotoaddress, processhandler.pointersize,x) then
+              disassemblerview.SelectedAddress:=gotoaddress;
+
+            exit;
+          end;
+        end;
+
         disassemblerview.SelectedAddress:=memoryaddress;
         key:=0;
       end;
@@ -3147,7 +3420,16 @@ begin
 
       if (ssalt in shift) or (ssctrl in shift) then exit; 
 
-      assemblepopup(lowercase(chr(key)));
+      try
+        assemblepopup(lowercase(chr(key)));
+      except
+        on e:exception do
+        begin
+          MessageDlg(e.message, mtError,[mbok],0);
+          exit;
+        end;
+
+      end;
     end;
   end;
 
@@ -3173,15 +3455,11 @@ begin
     exit;
 
   try
-    oldAddress:=disassemblerview.SelectedAddress;
     try
       disassemblerview.SelectedAddress:=symhandler.getaddressfromname(newaddress);
     except
       disassemblerview.SelectedAddress:=getaddress(newaddress);
     end;
-
-    backlist.Push(pointer(oldAddress));
-
   except
     on e:exception do
       MessageDlg(e.Message,mtError,[mbok],0);
@@ -3354,7 +3632,8 @@ begin
 end;
 
 procedure TMemoryBrowser.AssemblePopup(x:string);
-var assemblercode,desc: string;
+var assemblercode,desc,s: string;
+    totalbytes: TAssemblerBytes;
     bytes: tassemblerbytes;
     a,b,original,written:ptrUint;
     originalsize:ptrUint;
@@ -3374,59 +3653,86 @@ var assemblercode,desc: string;
     vpe: boolean;
 
     address: ptruint;
+
+    oldbp: PBreakpoint=nil;
+
+    {$ifdef ONEBYTEJUMPS}
+    isjmp1: boolean;
+    jmp1target: ptruint;
+    {$endif}
 begin
 
   //make sure it doesnt have a breakpoint
   address:=disassemblerview.SelectedAddress;
-
-
-  if debuggerthread<>nil then
-  begin
-    if debuggerthread.isBreakpoint(Address)<>nil then
-    begin
-      beep; //Best sound effect cheat engine has
-      exit;
-    end;
-  end;
-
-
-  originalsize:=Address;
-
-  localdisassembler:=TDisassembler.Create;
   try
-    localdisassembler.disassemble(originalsize,desc);
-    assemblercode:=localdisassembler.LastDisassembleData.prefix+localdisassembler.LastDisassembleData.opcode+' '+localdisassembler.LastDisassembleData.parameters;
-  finally
-    localdisassembler.free;
-  end;
 
-  dec(originalsize,Address);
-
-
-  if x<>'' then assemblercode:=x;
-
-//  copy
-
-  assemblercode:=InputboxTop(rsCheatEngineSingleLingeAssembler, Format(rsTypeYourAssemblerCodeHereAddress, [inttohex(Address, 8)]), assemblercode, x='', canceled{$ifndef darwin},assemblerHistory{$endif});
-  if not canceled then
-  begin
-
-    if defaultBinutils<>nil then
+    if debuggerthread<>nil then
     begin
-      //use the gnuassembler for this
-      gnascript:=TStringList.create;
-      try
-        gnascript.add('.msection sline 0x'+inttohex(Address,8));
-        gnascript.Add(assemblercode);
-        gnuassemble(gnascript);
-      finally
-        gnascript.free;
+      debuggerthread.lockbplist;
+      oldbp:=debuggerthread.isBreakpoint(Address);
+
+      if (oldbp<>nil) and (oldbp^.breakpointMethod<>bpmInt3) then
+        oldbp:=nil;
+
+      if oldbp=nil then
+        debuggerthread.unlockbplist; //no need to keep this lock
+    end;
+
+
+    originalsize:=Address;
+
+    localdisassembler:=TDisassembler.Create;
+    try
+      localdisassembler.disassemble(originalsize,desc);
+      assemblercode:=localdisassembler.LastDisassembleData.prefix+localdisassembler.LastDisassembleData.opcode+' '+localdisassembler.LastDisassembleData.parameters;
+    finally
+      localdisassembler.free;
+    end;
+
+    dec(originalsize,Address);
+
+
+    if x<>'' then assemblercode:=x;
+
+  //  copy
+
+    assemblercode:=InputboxTop(rsCheatEngineSingleLingeAssembler, Format(rsTypeYourAssemblerCodeHereAddress, [inttohex(Address, 8)]), assemblercode, x='', canceled{$ifndef darwin},assemblerHistory{$endif});
+    if not canceled then
+    begin
+
+      if defaultBinutils<>nil then
+      begin
+        //use the gnuassembler for this
+        gnascript:=TStringList.create;
+        try
+          gnascript.add('.msection sline 0x'+inttohex(Address,8));
+          gnascript.Add(assemblercode);
+          gnuassemble(gnascript);
+        finally
+          gnascript.free;
+        end;
+
+        exit;
       end;
 
-      exit;
-    end;
 
-    try
+      {$ifdef ONEBYTEJUMPS}
+      s:=lowercase(trim(assemblercode));
+      if s.StartsWith('jmp1 ') then
+      begin
+        isjmp1:=true;
+        s:=copy(s,6);
+
+        jmp1target:=symhandler.getAddressFromName(s);
+
+        //still here, so the address is valid
+        assemblercode:='db cc';
+      end
+      else
+        isjmp1:=false;
+      {$endif}
+
+
       if Assemble(assemblercode,Address,bytes) then
       begin
         if originalsize<>length(bytes) then
@@ -3465,6 +3771,15 @@ begin
           end;
         end;
 
+        {$ifdef ONEBYTEJUMPS}
+        if isjmp1 then
+        begin
+          InitializeAutoAssemblerExceptionHandler;
+          AutoAssemblerExceptionHandlerAddChangeRIPEntry(address, jmp1target);
+
+          AutoAssemblerExceptionHandlerApplyChanges;
+        end;
+        {$endif}
         //note to self, check the size of the current opcode and give the option to replace the missing or too many bytes with nops
         //and put in a option to disable showing that message, and use a default action
 
@@ -3473,18 +3788,57 @@ begin
 
         bytelength:=length(bytes);
 
+        if oldbp<>nil then
+          debuggerthread.UnsetBreakpoint(oldbp);
+
+        a:=0;
         if fcr3=0 then
         begin
-          vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle,  pointer(Address),bytelength,PAGE_EXECUTE_READWRITE,p);
-          WriteProcessMemoryWithCloakSupport(processhandle,pointer(Address),@bytes[0],bytelength,a);
+          if SystemSupportsWritableExecutableMemory or SkipVirtualProtectEx then
+            vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle,  pointer(Address),bytelength,PAGE_EXECUTE_READWRITE,p)
+          else
+          begin
+            outputdebugstring('First making memory writable');
+            if processid<>GetCurrentProcessId then
+            begin
+              if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then
+                TGDBServerDebuggerInterface(CurrentDebuggerInterface).suspendProcess
+              else
+                ntsuspendProcess(processhandle);
+            end;
+            vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle,  pointer(Address),bytelength,PAGE_READWRITE,p)
+          end;
+
+          if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) and GDBWriteProcessMemoryCodeOnly then
+            TGDBServerDebuggerInterface(CurrentDebuggerInterface).writeBytes(address, @bytes[0],bytelength)
+          else
+            WriteProcessMemoryWithCloakSupport(processhandle,pointer(Address),@bytes[0],bytelength,a);
+
           if vpe then
+          begin
             VirtualProtectEx(processhandle,pointer(Address),bytelength,p,p);
+            outputdebugstring('restoring back to the original protection: '+p.ToString);
+          end;
+
+          if (not (SystemSupportsWritableExecutableMemory or SkipVirtualProtectEx)) and (processid<>GetCurrentProcessId) then
+          begin
+            if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then
+              TGDBServerDebuggerInterface(CurrentDebuggerInterface).resumeProcess
+            else
+              ntresumeProcess(processhandle);
+          end;
         end
         else
         begin
           {$ifdef windows}
           WriteProcessMemoryCR3(fcr3, pointer(address),@bytes[0], bytelength,a);
           {$endif}
+        end;
+
+        if (a>0) and (oldbp<>nil) then
+        begin
+          oldbp^.originalbyte:=bytes[0];
+          debuggerthread.SetBreakpoint(oldbp);
         end;
 
         hexview.update;
@@ -3495,16 +3849,25 @@ begin
         disassemblerview.SetFocus;
         {$endif}
       end else raise exception.create(Format(rsIDonTUnderstandWhatYouMeanWith, [assemblercode]));
-    except
-      raise exception.create(Format(rsIDonTUnderstandWhatYouMeanWith, [assemblercode]));
+
+
     end;
 
+
+  finally
+    if oldbp<>nil then  //still needs to be unlocked
+      debuggerthread.unlockbplist;
   end;
 end;
 
 procedure TMemoryBrowser.Assemble1Click(Sender: TObject);
 begin
-  AssemblePopup('');
+  try
+    AssemblePopup('');
+  except
+    on e: exception do
+      MessageDlg(e.message, mtError, [mbok],0);
+  end;
 end;
 
 procedure TMemoryBrowser.HexEditKeyPress(Sender: TObject; var Key: Char);
@@ -3535,114 +3898,12 @@ end;
 
 procedure TMemoryBrowser.miShowIndisassemblerClick(Sender: TObject);
 begin
-  disassemblerview.SelectedAddress:=getContextValueByTag(pmRegisters.PopupComponent.Tag);
+  if context<>nil then
+    disassemblerview.SelectedAddress:=PContextElement_register(pmRegisters.PopupComponent.Tag)^.getValue(context);
 end;
 
-function TMemoryBrowser.getContextValueByTag(tag: integer): ptruint;
-var context: PCONTEXT;
-begin
-  result:=0;
-  if (debuggerthread<>nil) and (debuggerthread.CurrentThread<>nil) then
-  begin
-    context:=debuggerthread.CurrentThread.context;
-    case Tag of
-      0: result:=context.{$ifdef cpu64}Rax{$else}Eax{$endif};    //eax
-      1: result:=context.{$ifdef cpu64}Rbx{$else}Ebx{$endif};    //ebx
-      2: result:=context.{$ifdef cpu64}Rcx{$else}Ecx{$endif};    //ecx
-      3: result:=context.{$ifdef cpu64}Rdx{$else}Edx{$endif};    //edx
-      4: result:=context.{$ifdef cpu64}Rsi{$else}Esi{$endif};    //esi
-      5: result:=context.{$ifdef cpu64}Rdi{$else}Edi{$endif};    //edi
-      6: result:=context.{$ifdef cpu64}Rbp{$else}Ebp{$endif};    //ebp
-      7: result:=context.{$ifdef cpu64}Rsp{$else}Esp{$endif};    //esp
-      8: result:=context.{$ifdef cpu64}Rip{$else}Eip{$endif};    //eip
-      9: result:=context.segcs;    //cs
-      10: result:=context.segss;    //ss
-      11: result:=context.segds;    //ds
-      12: result:=context.seges;    //es
-      13: result:=context.segfs;    //fs
-      14: result:=context.seggs;    //gs
 
-      20: result:=getbit(0,context.eflags); //0=cf
-      21: result:=getbit(2,context.eflags); //2=pf
-      22: result:=getbit(4,context.eflags); //4=af
-      23: result:=getbit(6,context.eflags); //6=zf
-      24: result:=getbit(7,context.eflags); //7=sf
-      25: result:=getbit(10,context.eflags); //10=df
-      26: result:=getbit(11,context.eflags); //11=of
-
-      {$ifdef cpu64}
-      6408: result:=context.r8;
-      6409: result:=context.r9;
-      6410: result:=context.r10;
-      6411: result:=context.r11;
-      6412: result:=context.r12;
-      6413: result:=context.r13;
-      6414: result:=context.r14;
-      6415: result:=context.r15;
-      {$endif}
-    end;
-
-  end;
-end;
-
-procedure TMemoryBrowser.setContextValueByTag(value: ptruint; tag: integer);
-var context: PCONTEXT;
-    EIPWasFocused: boolean;
-begin
-
-  if (debuggerthread<>nil) and (debuggerthread.CurrentThread<>nil) then
-  begin
-    eipwasfocused:=disassemblerview.SelectedAddress=debuggerthread.CurrentThread.context.{$ifdef cpu32}EIP{$else}Rip{$endif};
-
-
-    context:=debuggerthread.CurrentThread.context;
-    case tag of
-      0: context.{$ifdef cpu64}Rax{$else}Eax{$endif}:=value;    //eax
-      1: context.{$ifdef cpu64}Rbx{$else}Ebx{$endif}:=value;    //ebx
-      2: context.{$ifdef cpu64}Rcx{$else}Ecx{$endif}:=value;    //ecx
-      3: context.{$ifdef cpu64}Rdx{$else}Edx{$endif}:=value;    //edx
-      4: context.{$ifdef cpu64}Rsi{$else}Esi{$endif}:=value;    //esi
-      5: context.{$ifdef cpu64}Rdi{$else}Edi{$endif}:=value;    //edi
-      6: context.{$ifdef cpu64}Rbp{$else}Ebp{$endif}:=value;    //ebp
-      7: context.{$ifdef cpu64}Rsp{$else}Esp{$endif}:=value;    //esp
-      8:
-      begin
-        context.{$ifdef cpu64}Rip{$else}Eip{$endif}:=value;    //eip
-        if EIPWasFocused then
-          disassemblerview.SelectedAddress:=value;
-      end;
-
-      9: context.segcs:=value;    //cs
-      10: context.segss:=value;    //ss
-      11: context.segds:=value;    //ds
-      12: context.seges:=value;    //es
-      13: context.segfs:=value;    //fs
-      14: context.seggs:=value;    //gs
-
-      20: setbit(0,context.eflags,value); //0=cf
-      21: setbit(2,context.eflags,value); //2=pf
-      22: setbit(4,context.eflags,value); //4=af
-      23: setbit(6,context.eflags,value); //6=zf
-      24: setbit(7,context.eflags,value); //7=sf
-      25: setbit(10,context.eflags,value); //10=df
-      26: setbit(11,context.eflags,value); //11=of
-
-      {$ifdef cpu64}
-      6408: context.r8:=value;
-      6409: context.r9:=value;
-      6410: context.r10:=value;
-      6411: context.r11:=value;
-      6412: context.r12:=value;
-      6413: context.r13:=value;
-      6414: context.r14:=value;
-      6415: context.r15:=value;
-      {$endif}
-    end;
-
-  end;
-end;
-
-procedure TMemoryBrowser.EAXLabelDblClick(Sender: TObject);
+procedure TMemoryBrowser.RegisterLabelDblClick(Sender: TObject);
 var x: dword;
     i: integer;
     regname,input: string;
@@ -3651,85 +3912,26 @@ var x: dword;
     context: PContext;
     labeltext: string;
 
+    r: PContextElement_register;
+
 begin
   regname:='';
   labeltext:=tlabel(sender).Caption;
 
   if (debuggerthread<>nil) and (debuggerthread.isWaitingToContinue) then
   begin
-    with debuggerthread do
+    r:=PContextElement_register(tlabel(Sender).Tag);
+    regname:=r^.name;
+
+    input:=r^.getValueString(debuggerthread.CurrentThread.context);
+    if inputquery(rsChangeRegister, Format(rsWhatIsTheNewValueOf, [regname]), input) then
     begin
-      if processhandler.is64Bit then
-        rbase:='R' else rbase:='E';
-
-      i:=tlabel(sender).Tag;
-      case i of
-        0: regname:=rbase+'AX';
-        1: regname:=rbase+'BX';
-        2: regname:=rbase+'CX';
-        3: regname:=rbase+'DX';
-        4: regname:=rbase+'SI';
-        5: regname:=rbase+'DI';
-        6: regname:=rbase+'BP';
-        7: regname:=rbase+'SP';
-        8: regname:=rbase+'IP';
-        9: regname:='CS';
-        10: regname:='SS';
-        11: regname:='DS';
-        12: regname:='ES';
-        13: regname:='FS';
-        14: regname:='GS';
-        20: regname:='CF';
-        21: regname:='PF';
-        22: regname:='AF';
-        23: regname:='ZF';
-        24: regname:='SF';
-        25: regname:='DF';
-        26: regname:='OF';
-
-        6408..6415: regname:='R'+inttostr(i-6400);
-
-      end;
-
-
-      input:=copy(labeltext,rpos(' ',labeltext)+1,length(labeltext));
-      if (i<20) or (i>6400) then
+      if debuggerthread.CurrentThread<>nil then
       begin
-        if not inputquery(rsChangeRegister, Format(rsWhatIsTheNewValueOf, [regname]), input) then exit;
-      end
-      else
-      begin
-        if not inputquery(rsChangeRegister, Format(rsWhatIsTheNewValueOf, [regname])+' '+rs0Or1, input) then exit;
-        input:=trim(input);
-        if (input<>'0') and (input<>'1') then
-          raise exception.create(Format(rsIsNotAValidValue, [input]));
-
-      end;
-
-      value:=symhandler.getAddressFromName(input);
-
-
-      SetContextValueByTag(value, tlabel(sender).Tag);
-
-
-
-
-      if (tlabel(sender).Tag>=9) and (tlabel(sender).tag<6400) then //flags or segment registers
-      begin
-        if (tlabel(sender).Tag>=20) then //flag
-          tlabel(sender).Caption:=regname+' '+inttohex(value,1)
-        else
-          tlabel(sender).Caption:=regname+' '+inttohex(value,4);
-      end
-      else
-      begin
-        //normal reg
-        while length(regname)<3 do
-          regname:=' '+regname;
-        tlabel(sender).Caption:=regname+' '+inttohex(value,processhandler.pointersize*2)
+        r^.setValue(debuggerthread.CurrentThread.context, input);
+        tlabel(Sender).caption:=padleft(regname, contexthandler.GeneralPurposeRegisterMaxCharCount)+' '+r^.getFullValueString(debuggerthread.CurrentThread.context);
       end;
     end;
-
   end;
 
 end;
@@ -3802,27 +4004,42 @@ var count: string;
     x: dword;
     s: string;
 begin
+  {$ifdef darwin}
+  count:=getPageSize.ToString;
+  {$else}
   count:='4096';
-  if inputquery(rsAllocateMemory, rsHowMuchMemoryDoYouWantToAddToThisProcess, count) then
-  begin
-    try
-      memsize:=StrToInt(count);
-    except
-      raise exception.Create(Format(rsHowMuchIs, [count]));
+  {$endif}
+  try
+    if inputquery(rsAllocateMemory, rsHowMuchMemoryDoYouWantToAddToThisProcess, count) then
+    begin
+      try
+        memsize:=StrToInt(count);
+      except
+        raise exception.Create(Format(rsHowMuchIs, [count]));
+      end;
+
+      baseaddress:=nil;
+
+      if not SystemSupportsWritableExecutableMemory then
+        baseaddress:=VirtualAllocEx(processhandle,nil,memsize,MEM_COMMIT or MEM_RESERVE,PAGE_EXECUTE)
+      else
+        baseaddress:=VirtualAllocEx(processhandle,nil,memsize,MEM_COMMIT or MEM_RESERVE,PAGE_EXECUTE_READWRITE);
+
+      if baseaddress=nil then
+        raise exception.Create(rsErrorAllocatingMemory);
+
+      if allocsAddToUnexpectedExceptionList then
+        AddUnexpectedExceptionRegion(ptruint(baseaddress),memsize);
+
+      if (disassemblerview.SelectedAddress<>0) and (memsize>7) and (messagedlg(Format(rsAtLeastBytesHaveBeenAllocatedAtDoYouWantToGoThereN, [IntToStr(memsize), IntToHex(ptrUint(baseaddress), 8), #13
+        +#10]), mtConfirmation, [mbyes, mbno], 0)=mryes) then
+        disassemblerview.SelectedAddress:=ptrUint(baseaddress);
+
     end;
 
-    baseaddress:=nil;
-
-    baseaddress:=VirtualAllocEx(processhandle,nil,memsize,MEM_COMMIT or MEM_RESERVE,PAGE_EXECUTE_READWRITE);
-    if baseaddress=nil then
-      raise exception.Create(rsErrorAllocatingMemory);
-
-    if allocsAddToUnexpectedExceptionList then
-      AddUnexpectedExceptionRegion(ptruint(baseaddress),memsize);
-
-    if (disassemblerview.SelectedAddress<>0) and (memsize>7) and (messagedlg(Format(rsAtLeastBytesHaveBeenAllocatedAtDoYouWantToGoThereN, [IntToStr(memsize), IntToHex(ptrUint(baseaddress), 8), #13
-      +#10]), mtConfirmation, [mbyes, mbno], 0)=mryes) then
-      disassemblerview.SelectedAddress:=ptrUint(baseaddress);
+  except
+    on e: exception do
+      MessageDlg(e.message, mtError,[mbok],0);
   end;
 end;
 
@@ -3907,7 +4124,11 @@ begin
     raise exception.Create(rsPleaseEnterAValidHexadecimalValue);
   end;
 
-  if CreateRemoteThread(processhandle,nil,0,pointer(startaddress),pointer(parameter),0,threadid)=0 then raise exception.Create(rsMBCreationOfTheRemoteThreadFailed) else showmessage(rsMBThreadCreated);
+  if CreateRemoteThread(processhandle,nil,0,pointer(startaddress),pointer(parameter),0,threadid)=0 then
+    MessageDlg(rsMBCreationOfTheRemoteThreadFailed, mterror,[mbok],0)
+  else
+    showmessage(rsMBThreadCreated);
+
 end;
 
 procedure TMemoryBrowser.MemoryRegions1Click(Sender: TObject);
@@ -4044,9 +4265,14 @@ begin
     functionname:='';
     {$endif}
 
-    InjectDll(dll,functionname);
-    symhandler.reinitialize(true);
-    showmessage(rsDLLInjected);
+    try
+      InjectDll(dll,functionname);
+      symhandler.reinitialize(true);
+      showmessage(rsDLLInjected);
+    except
+      on e:exception do
+        MessageDlg(e.message,mtError,[mbok],0);
+    end;
   end;
 
 end;
@@ -4247,10 +4473,7 @@ begin
       raise exception.Create(rsErrorAllocatingMemory);
 
     if messagedlg(Format(rsAtLeastBytesHaveBeenAllocatedAtGoThereNow, [IntToStr(memsize), IntToHex(ptrUint(baseaddress), 8)]), mtinformation, [mbyes, mbno], 0) = mryes then
-    begin
-      backlist.Push(pointer(disassemblerview.SelectedAddress));
       disassemblerview.SelectedAddress:=ptrUint(baseaddress);
-    end;
   end;
   {$endif}
   {$endif}
@@ -4406,8 +4629,11 @@ begin
 end;
 
 procedure TMemoryBrowser.Breakandtraceinstructions1Click(Sender: TObject);
+var f: TFrmTracer;
 begin
-  TFrmTracer.create(self).show;
+  f:=TFrmTracer.create(self);
+  f.show;
+  f.miNewTrace.Click;
 end;
 
 procedure TMemoryBrowser.debuggerpopupPopup(Sender: TObject);
@@ -4431,7 +4657,7 @@ begin
   Findoutwhataddressesthisinstructionaccesses1.enabled:=processhandle<>0;
 
   follow1.visible:=isjumporcall(disassemblerview.SelectedAddress,x);
-  back1.Visible:=backlist.Count>0;
+  back1.Visible:=disassemblerview.hasbacklist;
 
   pluginhandler.handledisassemblerContextPopup(disassemblerview.SelectedAddress);
 
@@ -4530,6 +4756,8 @@ begin
 
   miDBVMFindoutwhataddressesthisinstructionaccesses.visible:={$ifdef windows}isDBVMCapable and miSetSpecificBreakpoint.visible{$else}false{$endif};
   miDBVMFindoutwhataddressesthisinstructionaccesses.enabled:=miDBVMFindoutwhataddressesthisinstructionaccesses.visible;
+  menuitem5.visible:=miDBVMFindoutwhataddressesthisinstructionaccesses.visible;
+  menuitem6.visible:=miDBVMFindoutwhataddressesthisinstructionaccesses.visible;
 
   //
   miSetBreakpointHW.enabled:=(CurrentDebuggerInterface=nil) or (dbcHardwareBreakpoint in CurrentDebuggerInterface.DebuggerCapabilities);
@@ -4612,7 +4840,7 @@ begin
       if self.miShowModuleAddresses.checked then v:=v or 1;
       if self.miShowSectionAddresses.checked then v:=v or 2;
       params[7]:=v;
-      params[8]:=strtoint(BoolToStr(self.miLockRowsize.Checked,'1','0'));
+      //params[8]:=strtoint(BoolToStr(self.miLockRowsize.Checked,'1','0')); 7.4: obsolete
       params[9]:=self.hexview.LockedRowSize;
       params[10]:=strtoint(BoolToStr(self.Kernelmodesymbols1.checked,'1','0'));
 
@@ -4676,10 +4904,7 @@ will change the selected disassembler address to the address this instructions j
 var address: ptrUint;
 begin
   if isjumporcall(disassemblerview.SelectedAddress,address) then
-  begin
-    backlist.Push(pointer(disassemblerview.SelectedAddress));
     disassemblerview.SelectedAddress:=address;
-  end;
 end;
 
 
@@ -4822,15 +5047,10 @@ begin
 
 end;
 
-procedure TMemoryBrowser.AddToDisassemblerBackList(address: pointer);
-begin
-  backlist.Push(address);
-end;
 
 procedure TMemoryBrowser.Back1Click(Sender: TObject);
 begin
-  if backlist.Count>0 then
-    disassemblerview.SelectedAddress:=ptrUint(backlist.pop);
+  disassemblerview.GoBack;
 end;
 
 procedure TMemoryBrowser.Showvaluesofstaticaddresses1Click(
@@ -4841,7 +5061,6 @@ end;
 
 
 procedure TMemoryBrowser.FindwhatThiscodeAccesses(address: ptrUint);
-var i: integer;
 begin
   if not startdebuggerifneeded then exit;
   if debuggerthread<>nil then
@@ -4918,7 +5137,7 @@ begin
 
         frmchangedaddresses.address:=address;
 
-        frmchangedaddresses.dbvmwatchid:=id;
+        frmchangedaddresses.debuggerinterfacewatchid:=id;
         frmchangedaddresses.dbvmwatch_unlock:=unlockaddress;
         if defaultDisassembler.LastDisassembleData.isfloat then
           frmchangedaddresses.cbDisplayType.ItemIndex:=3;
@@ -4989,9 +5208,8 @@ begin
   frmFloatingPointPanel.Top:=self.top+(self.ClientOrigin.y-self.top)-(frmFloatingPointPanel.ClientOrigin.y-frmFloatingPointPanel.top);
   frmFloatingPointPanel.ClientHeight:=scrollbox1.Height;
 
+  frmFloatingPointPanel.SetContextPointer(debuggerthread.CurrentThread.context);
 
-
-  frmFloatingPointPanel.SetContextPointer(@lastdebugcontext);
   frmFloatingPointPanel.show;//pop to foreground
 end;
 
@@ -5049,6 +5267,12 @@ begin
   else
     disassemblerview.ShowJumplineState:=jlsAll;
 
+end;
+
+procedure TMemoryBrowser.View1Click(Sender: TObject);
+begin
+  miIPTLog.visible:=systemSupportsIntelPT and not hideiptcapability;
+  miIPTLog.enabled:=debuggerthread<>nil;
 end;
 
 procedure TMemoryBrowser.Watchmemoryallocations1Click(Sender: TObject);
@@ -5158,24 +5382,23 @@ begin
         //just get the list
         getmem(s,FStacktraceSize);
         try
-          readprocessmemory(processhandle, pointer(lastdebugcontext.{$ifdef cpu64}rsp{$else}esp{$endif}),s, FStacktraceSize,x);
+
+          readprocessmemory(processhandle, pointer(contexthandler.StackPointerRegister^.getValue(context)),s, FStacktraceSize,x);
           strace.Clear;
 
           if miAddESP.checked then
           begin
-            refname:='rsp';
-            refaddress:=lastdebugcontext.{$ifdef cpu64}rsp{$else}esp{$endif};
-            if not processhandler.is64Bit then
-              refname[1]:='e';
+            refname:=lowercase(contexthandler.StackPointerRegister^.name);
+            refaddress:=contexthandler.StackPointerRegister^.getValue(context);
           end
           else
-          if miAddEBP.checked then
+          if (processhandler.SystemArchitecture=archX86) and miAddEBP.checked then
           begin
-            refname:='ebp';
+            refname:='rbp';
             if not processhandler.is64Bit then
               refname[1]:='e';
 
-            refaddress:=lastdebugcontext.{$ifdef cpu64}rbp{$else}ebp{$endif};
+            refaddress:=contexthandler.getRegister(refname)^.getValue(context);
           end
           else
           if miAddRef.checked then
@@ -5184,9 +5407,9 @@ begin
             refaddress:=StackReference;
           end;
 
+          if processhandler.SystemArchitecture=archX86 then
+            ce_stacktrace(contexthandler.StackPointerRegister^.getValue(context), pcontext(context)^.{$ifdef cpu64}rbp{$else}ebp{$endif}, contexthandler.InstructionPointerRegister^.getValue(context), pbytearray(s),x, strace,false,Nonsystemmodulesonly1.checked or modulesonly1.Checked,Nonsystemmodulesonly1.checked,0,refaddress,refname);
 
-
-          ce_stacktrace(lastdebugcontext.{$ifdef cpu64}rsp{$else}esp{$endif}, lastdebugcontext.{$ifdef cpu64}rbp{$else}ebp{$endif}, lastdebugcontext.{$ifdef cpu64}rip{$else}eip{$endif}, pbytearray(s),x, strace,false,Nonsystemmodulesonly1.checked or modulesonly1.Checked,Nonsystemmodulesonly1.checked,0,refaddress,refname);
 
           lvstacktracedata.Items.Count:=strace.Count;
         finally
@@ -5320,7 +5543,7 @@ begin
   begin
 
     //go through the stack and find a entry that falls in executable memory
-    ReadProcessMemory(processhandle, pointer(lastdebugcontext.{$ifdef cpu64}rsp{$else}Esp{$endif}), @stack[0], 4096, x);
+    ReadProcessMemory(processhandle, pointer(contexthandler.StackPointerRegister^.getValue(context)), @stack[0], 4096, x);
     for i:=0 to (x div processhandler.pointersize) do
     begin
       if symhandler.inModule(stack[i]) and isExecutableAddress(stack[i]) then
@@ -5382,7 +5605,7 @@ begin
     //show for each dword what it is
 
 
-    a:=lastdebugcontext.{$ifdef cpu64}rsp{$else}Esp{$endif}+item.Index*processhandler.pointersize;
+    a:=contexthandler.StackPointerRegister^.getValue(context)+item.Index*processhandler.pointersize;
 
     if laststack<>nil then
     begin
@@ -5412,8 +5635,17 @@ begin
         end
         else
         begin
-          offset:=a-lastdebugcontext.{$ifdef cpu64}rbp{$else}Ebp{$endif};
-          refname:=pref+'bp';
+          if processhandler.SystemArchitecture=archX86 then
+          begin
+            offset:=a-PCONTEXT(context)^.{$ifdef cpu64}rbp{$else}Ebp{$endif};
+            refname:=pref+'bp';
+          end
+          else
+          begin
+            offset:=a-StackReference;
+            refname:=' ';
+          end;
+
         end;
 
         if offset<0 then
@@ -5488,10 +5720,7 @@ begin
   if stacktrace2.checked then
   begin
     //go to the selected address
-    {x:=symhandler.getAddressFromName(pointed.Caption,false,haserror);
-    if not haserror then
-      disassemblerview.SelectedAddress:=x;  }
-    backlist.Push(pointer(disassemblerview.SelectedAddress));
+
     disassemblerview.SelectedAddress:=ptruint(pointed.Data);
   end
   else
@@ -5530,7 +5759,6 @@ begin
       ksh:=GetKeyShiftState;
       if ssShift in ksh then
       begin
-        backlist.Push(pointer(disassemblerview.SelectedAddress));
         disassemblerview.SelectedAddress:=x
       end
       else
@@ -5542,7 +5770,6 @@ begin
       else
       if isExecutableAddress(x) then
       begin
-        backlist.Push(pointer(disassemblerview.SelectedAddress));
         disassemblerview.SelectedAddress:=x
       end
       else
@@ -5587,6 +5814,8 @@ begin
   miDebugSetAddress.enabled:=false;
   stacktrace1.Enabled:=false;
   miDebugExecuteTillReturn.Enabled:=false;
+
+  ApplySourceCodeDebugUpdate;
   {Other tasks}
   //...
 end;
@@ -5625,6 +5854,14 @@ begin
   setControlFontKeepColor(scrollbox1,f);
 end;
 
+procedure TMemoryBrowser.showDebugPaneltimertimer(sender: tobject);
+begin
+  showdebugpaneltimer.enabled:=false;
+  showDebugPanels:=true;
+  registerview.ClientWidth:=lblFlags.left+lblFlags.width+16+scrollbox1.VertScrollBar.Size;
+  scrollbox1.HorzScrollBar.Visible:=false;
+  scrollbox1.Invalidate;
+end;
 
 procedure TMemoryBrowser.UpdateDebugContext(threadhandle: THandle; threadid: dword; changeselection: boolean=true; _debuggerthread: TDebuggerThread=nil);
 var temp: string='';
@@ -5641,12 +5878,29 @@ var temp: string='';
 
     params: string;
     accessedreglist: tstringlist=nil;
+
+    oldcontexthandler: TContextInfo;
+
+    l: TLabel;
+    gprlist, flaglist, speciallist: PContextElementRegisterList;
+
+    cer: PContextElement_register;
+
+    iptlog: pointer;
+    iptlogsize: integer;
 begin
   if _debuggerthread<>nil then debuggerthread.execlocation:=41301;
 
+
+
+
+
+  oldcontexthandler:=contexthandler;
+  contexthandler:=getBestContextHandler;
+
   if processhandler.SystemArchitecture=archX86 then
   begin
-    a:=lastdebugcontext.{$ifdef cpu64}Rip{$else}Eip{$endif};
+    a:=contexthandler.InstructionPointerRegister^.getValue(context);
     d:=TDisassembler.create;
 
     d.disassemble(a, temp);
@@ -5666,154 +5920,116 @@ begin
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41302;
 
 
-  if processhandler.is64Bit or (processhandler.SystemArchitecture=archArm) then
+
+  if contexthandler<>oldcontexthandler then
   begin
-    regstart:='R';
+    //rebuild the registerlist
+    self.BeginFormUpdate;
+    try
+      while pnlGeneralRegisters.ControlCount>0 do
+        pnlGeneralRegisters.Controls[0].Free;
 
-    if processhandler.is64Bit then
-      charcount:=16
-    else
-      charcount:=8;
+      while pnlFlags.ControlCount>0 do
+        pnlFlags.Controls[0].Free;
 
-    if r8label=nil then
-    begin
-      r8label:=tlabel.create(self);
-      r8label.parent:=panel2;
-      r8label.Font:=eaxlabel.Font;
-      r8label.Cursor:=eaxlabel.Cursor;
-      r8label.Tag:=6408;
-      r8label.PopupMenu:=pmRegisters;
-      r8label.onclick:=EAXLabelDblClick;
-      r8label.OnMouseDown:=RegisterMouseDown;
+      while pnlExtraRegisters.ControlCount>0 do
+        pnlExtraRegisters.Controls[0].Free;
+
+      gprlist:=contexthandler.getGeneralPurposeRegisters;
+      if gprlist<>nil then
+      begin
+        lblRegisters.visible:=true;
+        sRegisters.visible:=true;
+        pnlGeneralRegisters.visible:=true;
+
+        for i:=0 to length(gprlist^)-1 do
+        begin
+          l:=tlabel.create(self);
+          l.Caption:=gprlist^[i].name;
+          l.parent:=pnlGeneralRegisters;
+          l.Cursor:=crHandPoint;
+          l.Tag:=ptruint(@gprlist^[i]);
+          l.PopupMenu:=pmRegisters;
+          l.onclick:=RegisterLabelDblClick;
+          l.OnMouseDown:=RegisterMouseDown;
+        end;
+      end
+      else
+      begin
+        lblRegisters.visible:=false;
+        sRegisters.visible:=false;
+        pnlGeneralRegisters.visible:=false;
+      end;
+
+      flaglist:=contexthandler.getGeneralPurposeFlags;
+      if flaglist<>nil then
+      begin
+        lblFlags.visible:=true;
+        sflags.visible:=true;
+        pnlFlags.visible:=true;
+
+        for i:=0 to length(flaglist^)-1 do
+        begin
+          l:=tlabel.create(self);
+          l.Caption:=flaglist^[i].name;
+          l.parent:=pnlFlags;
+          l.Cursor:=crHandPoint;
+          l.Tag:=ptruint(@flaglist^[i]);
+          l.PopupMenu:=pmRegisters;
+          l.onclick:=RegisterLabelDblClick;
+          l.OnMouseDown:=RegisterMouseDown;
+        end;
+      end
+      else
+      begin
+        lblFlags.visible:=false;
+        sflags.visible:=false;
+        pnlFlags.visible:=false;
+      end;
+
+      speciallist:=contexthandler.getSpecializedRegisters;
+      if speciallist<>nil then
+      begin
+        lblSpecial.visible:=true;
+        sSpecial.visible:=true;
+        pnlExtraRegisters.visible:=true;
+
+        for i:=0 to length(speciallist^)-1 do
+        begin
+          l:=tlabel.create(self);
+          l.Caption:=flaglist^[i].name;
+          l.parent:=pnlExtraRegisters;
+          l.Cursor:=crHandPoint;
+          l.Tag:=ptruint(@speciallist^[i]);
+          l.PopupMenu:=pmRegisters;
+          l.onclick:=RegisterLabelDblClick;
+          l.OnMouseDown:=RegisterMouseDown;
+        end;
+      end
+      else
+      begin
+        lblSpecial.visible:=false;
+        sSpecial.visible:=false;
+        pnlExtraRegisters.visible:=false;
+      end;
+
+    finally
+      EndFormUpdate;
     end;
-
-    if r9label=nil then
-    begin
-      r9label:=tlabel.create(self);
-      r9label.parent:=panel2;
-      r9label.Font:=eaxlabel.Font;
-      r9label.Cursor:=eaxlabel.Cursor;
-      r9label.Tag:=6409;
-      r9label.PopupMenu:=pmRegisters;
-      r9label.onclick:=EAXLabelDblClick;
-      r9label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    if r10label=nil then
-    begin
-      r10label:=tlabel.create(self);
-      r10label.parent:=panel2;
-      r10label.Font:=eaxlabel.Font;
-      r10label.Cursor:=eaxlabel.Cursor;
-      r10label.Tag:=6410;
-      r10label.PopupMenu:=pmRegisters;
-      r10label.onclick:=EAXLabelDblClick;
-      r10label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    if r11label=nil then
-    begin
-      r11label:=tlabel.create(self);
-      r11label.parent:=panel2;
-      r11label.Font:=eaxlabel.Font;
-      r11label.Cursor:=eaxlabel.Cursor;
-      r11label.Tag:=6411;
-      r11label.PopupMenu:=pmRegisters;
-      r11label.onclick:=EAXLabelDblClick;
-      r11label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    if r12label=nil then
-    begin
-      r12label:=tlabel.create(self);
-      r12label.parent:=panel2;
-      r12label.Font:=eaxlabel.Font;
-      r12label.Cursor:=eaxlabel.Cursor;
-      r12label.Tag:=6412;
-      r12label.PopupMenu:=pmRegisters;
-      r12label.onclick:=EAXLabelDblClick;
-      r12label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    if r13label=nil then
-    begin
-      r13label:=tlabel.create(self);
-      r13label.parent:=panel2;
-      r13label.Font:=eaxlabel.Font;
-      r13label.Cursor:=eaxlabel.Cursor;
-      r13label.Tag:=6413;
-      r13label.PopupMenu:=pmRegisters;
-      r13label.onclick:=EAXLabelDblClick;
-      r13label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    if r14label=nil then
-    begin
-      r14label:=tlabel.create(self);
-      r14label.parent:=panel2;
-      r14label.Font:=eaxlabel.Font;
-      r14label.Cursor:=eaxlabel.Cursor;
-      r14label.Tag:=6414;
-      r14label.PopupMenu:=pmRegisters;
-      r14label.onclick:=EAXLabelDblClick;
-      r14label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    if r15label=nil then
-    begin
-      r15label:=tlabel.create(self);
-      r15label.parent:=panel2;
-      r15label.Font:=eaxlabel.Font;
-      r15label.Cursor:=eaxlabel.Cursor;
-      r15label.Tag:=6415;
-      r15label.PopupMenu:=pmRegisters;
-      r15label.onclick:=EAXLabelDblClick;
-      r15label.OnMouseDown:=RegisterMouseDown;
-    end;
-
-    eiplabel.BringToFront;
-  end
-  else
-  begin
-    regstart:='E';
-    charcount:=8;
 
   end;
 
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41303;
 
-
-  if r8label<>nil then r8label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r9label<>nil then r9label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r10label<>nil then r10label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r11label<>nil then r11label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r12label<>nil then r12label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r13label<>nil then r13label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r14label<>nil then r14label.visible:=processhandler.is64Bit or (processhandler.SystemArchitecture=archArm);
-  if r15label<>nil then r15label.visible:=processhandler.is64Bit;
-
+  {}
   if (accessedreglist<>nil) then
   begin
-    if accessedreglist.IndexOf('RAX')>=0 then eaxlabel.color:=faccessedRegisterColor else eaxlabel.color:=clNone;
-    if accessedreglist.IndexOf('RBX')>=0 then ebxlabel.color:=faccessedRegisterColor else ebxlabel.color:=clNone;
-    if accessedreglist.IndexOf('RCX')>=0 then ecxlabel.color:=faccessedRegisterColor else ecxlabel.color:=clNone;
-    if accessedreglist.IndexOf('RDX')>=0 then edxlabel.color:=faccessedRegisterColor else edxlabel.color:=clNone;
-    if accessedreglist.IndexOf('RSI')>=0 then esilabel.color:=faccessedRegisterColor else esilabel.color:=clNone;
-    if accessedreglist.IndexOf('RDI')>=0 then edilabel.color:=faccessedRegisterColor else edilabel.color:=clNone;
-    if accessedreglist.IndexOf('RBP')>=0 then ebplabel.color:=faccessedRegisterColor else ebplabel.color:=clNone;
-    if accessedreglist.IndexOf('RSP')>=0 then esplabel.color:=faccessedRegisterColor else esplabel.color:=clNone;
-
-    if processhandler.is64Bit then
+    for i:=0 to pnlGeneralRegisters.ControlCount-1 do
     begin
-      if accessedreglist.IndexOf('R8')>=0 then r8label.color:=faccessedRegisterColor else r8label.color:=clNone;
-      if accessedreglist.IndexOf('R9')>=0 then r9label.color:=faccessedRegisterColor else r9label.color:=clNone;
-      if accessedreglist.IndexOf('R10')>=0 then r10label.color:=faccessedRegisterColor else r10label.color:=clNone;
-      if accessedreglist.IndexOf('R11')>=0 then r11label.color:=faccessedRegisterColor else r11label.color:=clNone;
-      if accessedreglist.IndexOf('R12')>=0 then r12label.color:=faccessedRegisterColor else r12label.color:=clNone;
-      if accessedreglist.IndexOf('R13')>=0 then r13label.color:=faccessedRegisterColor else r13label.color:=clNone;
-      if accessedreglist.IndexOf('R14')>=0 then r14label.color:=faccessedRegisterColor else r14label.color:=clNone;
-      if accessedreglist.IndexOf('R15')>=0 then r15label.color:=faccessedRegisterColor else r15label.color:=clNone;
+      l:=tlabel(pnlGeneralRegisters.Controls[i]);
+      if accessedreglist.IndexOf(PContextElement_register(l.Tag).name)>=0 then l.color:=fAccessedRegisterColor else l.color:=clNone;
     end;
+
   end;
 
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41304;
@@ -5825,16 +6041,16 @@ begin
   miDebugRun.Enabled:=true;
   tbRun.Enabled:=true; //enable toolbar run button
 
-  if debuggerthread.CurrentThread=nil then
-  begin
-    showmessage(rsSomethingHappened);
-    //beep;
-  end;
+  if debuggerthread=nil then exit;
+
 
   miRunUnhandled.Enabled:=(debuggerthread.CurrentThread<>nil) and debuggerthread.CurrentThread.isUnhandledException;
 
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41305;
   miRunUnhandled.Visible:=miRunUnhandled.Enabled;
+  tbRunUnhandled.enabled:=miRunUnhandled.enabled;
+  tbRunUnhandled.visible:=miRunUnhandled.enabled;
+
   miDebugStep.Enabled:=true;
   tbStepInto.Enabled:=true; //enable toolbar step into button
   miDebugStepOver.Enabled:=true;
@@ -5860,372 +6076,97 @@ begin
     if (threadhandle=0) and (debuggerthread<>nil) and (debuggerthread.CurrentThread<>nil) then
       threadhandle:=debuggerthread.CurrentThread.handle;
 
-    frmstacktrace.stacktrace(threadhandle, lastdebugcontext);
+    frmstacktrace.stacktrace(threadhandle, context);
   end;
 
   if changeselection then
   begin
-    if processhandler.SystemArchitecture=archX86 then
-      disassemblerview.SelectedAddress:=lastdebugcontext.{$ifdef CPU64}rip{$else}eip{$endif}
-    else
-    if processhandler.SystemArchitecture=archArm then
-      disassemblerview.SelectedAddress:=lastdebugcontextarm.PC;
+    disassemblerview.SelectedAddress:=contexthandler.InstructionPointerRegister^.getValue(context);
   end;
 
+  {}
 
-
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'AX '+IntToHex(lastdebugcontext.{$ifdef CPU64}rax{$else}eax{$endif},charcount)
-  else
-    temp:=' R0 '+IntToHex(lastdebugcontextarm.R0,charcount);
-
-  if temp<>eaxlabel.Caption then
+  //apply the values
+  if pnlGeneralRegisters.visible then
   begin
-    eaxlabel.Font.Color:=fChangedRegisterColor;
-    eaxlabel.Caption:=temp;
-  end else eaxlabel.Font.Color:=clWindowText;
-
-
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'BX '+IntToHex(lastdebugcontext.{$ifdef CPU64}rbx{$else}ebx{$endif},charcount)
-  else
-    temp:=' R1 '+IntToHex(lastdebugcontextarm.R1, charcount);
-  if temp<>ebxlabel.Caption then
-  begin
-    ebxlabel.Font.Color:=fChangedRegisterColor;
-    ebxlabel.Caption:=temp;
-  end else ebxlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'CX '+IntToHex(lastdebugcontext.{$ifdef CPU64}rcx{$else}ecx{$endif},charcount)
-  else
-    temp:=' R2 '+IntToHex(lastdebugcontextarm.R2, charcount);
-  if temp<>eCxlabel.Caption then
-  begin
-    eCXlabel.Font.Color:=fChangedRegisterColor;
-    eCXlabel.Caption:=temp;
-  end else eCXlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'DX '+IntToHex(lastdebugcontext.{$ifdef CPU64}rdx{$else}edx{$endif},charcount)
-  else
-    temp:=' R3 '+IntToHex(lastdebugcontextarm.R3, charcount);
-  if temp<>eDxlabel.Caption then
-  begin
-    eDxlabel.Font.Color:=fChangedRegisterColor;
-    eDxlabel.Caption:=temp;
-  end else eDxlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'SI '+IntToHex(lastdebugcontext.{$ifdef CPU64}rsi{$else}esi{$endif},charcount)
-  else
-    temp:=' R4 '+IntToHex(lastdebugcontextarm.R4, charcount);
-  if temp<>eSIlabel.Caption then
-  begin
-    eSIlabel.Font.Color:=fChangedRegisterColor;
-    eSIlabel.Caption:=temp;
-  end else eSIlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'DI '+IntToHex(lastdebugcontext.{$ifdef CPU64}rdi{$else}edi{$endif},charcount)
-  else
-    temp:=' R5 '+IntToHex(lastdebugcontextarm.R5, charcount);
-  if temp<>eDIlabel.Caption then
-  begin
-    eDIlabel.Font.Color:=fChangedRegisterColor;
-    eDIlabel.Caption:=temp;
-  end else eDIlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'BP '+IntToHex(lastdebugcontext.{$ifdef CPU64}rbp{$else}ebp{$endif},charcount)
-  else
-    temp:=' R6 '+IntToHex(lastdebugcontextarm.R6, charcount);
-  if temp<>eBPlabel.Caption then
-  begin
-    eBPlabel.Font.Color:=fChangedRegisterColor;
-    eBPlabel.Caption:=temp;
-  end else eBPlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'SP '+IntToHex(lastdebugcontext.{$ifdef CPU64}rsp{$else}esp{$endif},charcount)
-  else
-    temp:=' R7 '+IntToHex(lastdebugcontextarm.R3, charcount);
-  if temp<>eSPlabel.Caption then
-  begin
-    eSPlabel.Font.Color:=fChangedRegisterColor;
-    eSPlabel.Caption:=temp;
-  end else eSPlabel.Font.Color:=clWindowText;
-
-  if processhandler.SystemArchitecture=archX86 then
-    temp:=regstart+'IP '+IntToHex(lastdebugcontext.{$ifdef CPU64}rip{$else}eip{$endif},charcount)
-  else
-    temp:='PC '+IntToHex(lastdebugcontextarm.PC, charcount);
-  if temp<>eIPlabel.Caption then
-  begin
-    temp2:=ExtractWord(2,eIPlabel.Caption,[' ']);
-    if TryStrToInt64('$'+temp2,a64) then
+    for i:=0 to pnlGeneralRegisters.ControlCount-1 do
     begin
-      if a64<>0 then
-        backlist.Push(pointer(a64));
-    end;
+      l:=tlabel(pnlGeneralRegisters.controls[i]);
+      cer:=PContextElement_register(l.tag);
 
-    eIPlabel.Font.Color:=fChangedRegisterColor;
-    eIPlabel.Caption:=temp;
-
-
-
-  end else eIPlabel.Font.Color:=clWindowText;
-
-  if _debuggerthread<>nil then _debuggerthread.execlocation:=41306;
-
-  {$ifdef CPU64}
-  if processhandler.is64Bit or (processhandler.SystemArchitecture=archArm)  then
-  begin
-    if processhandler.SystemArchitecture=archX86 then
-      temp:=' R8 '+IntToHex(lastdebugcontext.r8,16)
-    else
-      temp:=' R8 '+IntToHex(lastdebugcontextarm.r8,8);
-    if temp<>r8label.Caption then
-    begin
-      r8label.Font.Color:=fChangedRegisterColor;
-      r8label.Caption:=temp;
-    end else r8label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-      temp:=' R9 '+IntToHex(lastdebugcontext.r9,16)
-    else
-      temp:=' R9 '+IntToHex(lastdebugcontextarm.r9,8);
-    if temp<>r9label.Caption then
-    begin
-      r9label.Font.Color:=fChangedRegisterColor;
-      r9label.Caption:=temp;
-    end else r9label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-      temp:='R10 '+IntToHex(lastdebugcontext.r10,16)
-    else
-      temp:='R10 '+IntToHex(lastdebugcontextarm.r10,8);
-    if temp<>r10label.Caption then
-    begin
-      r10label.Font.Color:=fChangedRegisterColor;
-      r10label.Caption:=temp;
-    end else r10label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-      temp:='R11 '+IntToHex(lastdebugcontext.r11,16)
-    else
-      temp:=' FP '+IntToHex(lastdebugcontextarm.FP,8);
-    if temp<>r11label.Caption then
-    begin
-      r11label.Font.Color:=fChangedRegisterColor;
-      r11label.Caption:=temp;
-    end else r11label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-      temp:='R12 '+IntToHex(lastdebugcontext.r12,16)
-    else
-      temp:=' IP '+IntToHex(lastdebugcontextarm.IP,8);
-    if temp<>r12label.Caption then
-    begin
-      r12label.Font.Color:=fChangedRegisterColor;
-      r12label.Caption:=temp;
-    end else r12label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-      temp:='R13 '+IntToHex(lastdebugcontext.r13,16)
-    else
-      temp:=' SP '+IntToHex(lastdebugcontextarm.SP,8);
-    if temp<>r13label.Caption then
-    begin
-      r13label.Font.Color:=fChangedRegisterColor;
-      r13label.Caption:=temp;
-    end else r13label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-      temp:='R14 '+IntToHex(lastdebugcontext.r14,16)
-    else
-      temp:=' LR '+IntToHex(lastdebugcontextarm.LR,8);
-    if temp<>r14label.Caption then
-    begin
-      r14label.Font.Color:=fChangedRegisterColor;
-      r14label.Caption:=temp;
-    end else r14label.Font.Color:=clWindowText;
-
-    if processhandler.SystemArchitecture=archX86 then
-    begin
-      temp:='R15 '+IntToHex(lastdebugcontext.r15,16);
-      if temp<>r15label.Caption then
+      temp:=padleft(cer^.name, contexthandler.GeneralPurposeRegisterMaxCharCount)+' '+cer^.getFullValueString(context);
+      if temp<>l.caption then
       begin
-        r15label.Font.Color:=fChangedRegisterColor;
-        r15label.Caption:=temp;
-      end else r15label.Font.Color:=clWindowText;
+        l.Font.Color:=fChangedRegisterColor;
+        l.Caption:=temp;
+      end
+      else
+        l.Font.Color:=clWindowText;
     end;
   end;
-  {$endif}
 
-  if _debuggerthread<>nil then _debuggerthread.execlocation:=41307;
-
-  if processhandler.SystemArchitecture=archX86 then
+  if pnlFlags.visible then
   begin
-
-    temp:='CS '+IntToHex(lastdebugcontext.SEGCS,4);
-    if temp<>CSlabel.Caption then
+    for i:=0 to pnlFlags.ControlCount-1 do
     begin
-      CSlabel.Font.Color:=fChangedRegisterColor;
-      CSlabel.Caption:=temp;
-    end else CSlabel.Font.Color:=clWindowText;
-
-    temp:='DS '+IntToHex(lastdebugcontext.SEGDS,4);
-    if temp<>DSlabel.Caption then
-    begin
-      DSlabel.Font.Color:=fChangedRegisterColor;
-      DSlabel.Caption:=temp;
-    end else DSLabel.Font.Color:=clWindowText;
-
-    temp:='SS '+IntToHex(lastdebugcontext.SEGSS,4);
-    if temp<>SSlabel.Caption then
-    begin
-      SSlabel.Font.Color:=fChangedRegisterColor;
-      SSlabel.Caption:=temp;
-    end else SSlabel.Font.Color:=clWindowText;
-
-    temp:='ES '+IntToHex(lastdebugcontext.SEGES,4);
-    if temp<>ESlabel.Caption then
-    begin
-      ESlabel.Font.Color:=fChangedRegisterColor;
-      ESlabel.Caption:=temp;
-    end else ESlabel.Font.Color:=clWindowText;
-
-    temp:='FS '+IntToHex(lastdebugcontext.SEGFS,4);
-    if temp<>FSlabel.Caption then
-    begin
-      FSlabel.Font.Color:=fChangedRegisterColor;
-      FSlabel.Caption:=temp;
-    end else FSlabel.Font.Color:=clWindowText;
-
-    temp:='GS '+IntToHex(lastdebugcontext.SEGGS,4);
-    if temp<>GSlabel.Caption then
-    begin
-      GSlabel.Font.Color:=fChangedRegisterColor;
-      GSlabel.Caption:=temp;
-    end else GSlabel.Font.Color:=clWindowText;
-
-    temp:='CF '+IntToStr(GetBit(0,lastdebugcontext.EFLAgs));
-    if temp<>cflabel.Caption then
-    begin
-      CFlabel.Font.Color:=fChangedRegisterColor;
-      CFlabel.caption:=temp;
-    end else cflabel.Font.Color:=clWindowText;
-
-    temp:='PF '+IntToStr(GetBit(2,lastdebugcontext.EFlags));
-    if temp<>Pflabel.Caption then
-    begin
-      Pflabel.Font.Color:=fChangedRegisterColor;
-      Pflabel.caption:=temp;
-    end else Pflabel.Font.Color:=clWindowText;
-
-    temp:='AF '+IntToStr(GetBit(4,lastdebugcontext.EFlags));
-    if temp<>Aflabel.Caption then
-    begin
-      Aflabel.Font.Color:=fChangedRegisterColor;
-      Aflabel.caption:=temp;
-    end else Aflabel.Font.Color:=clWindowText;
-
-    temp:='ZF '+IntToStr(GetBit(6,lastdebugcontext.EFlags));
-    if temp<>Zflabel.Caption then
-    begin
-      Zflabel.Font.Color:=fChangedRegisterColor;
-      Zflabel.caption:=temp;
-    end else Zflabel.Font.Color:=clWindowText;
-
-    temp:='SF '+IntToStr(GetBit(7,lastdebugcontext.EFlags));
-    if temp<>Sflabel.Caption then
-    begin
-      Sflabel.Font.Color:=fChangedRegisterColor;
-      Sflabel.caption:=temp;
-    end else Sflabel.Font.Color:=clWindowText;
-
-    temp:='DF '+IntToStr(GetBit(10,lastdebugcontext.EFlags));
-    if temp<>Dflabel.Caption then
-    begin
-      Dflabel.Font.Color:=fChangedRegisterColor;
-      Dflabel.caption:=temp;
-    end else Dflabel.Font.Color:=clWindowText;
-
-    temp:='OF '+IntToStr(GetBit(11,lastdebugcontext.EFlags));
-    if temp<>Oflabel.Caption then
-    begin
-      Oflabel.Font.Color:=fChangedRegisterColor;
-      Oflabel.caption:=temp;
-    end else Oflabel.Font.Color:=clWindowText;
-
-    Label15.left:=eaxlabel.left+eaxlabel.Canvas.TextWidth(eaxlabel.caption)+16;
-    shape2.left:=Label15.left;
-    cflabel.left:=label15.left;
-    pflabel.left:=label15.left;
-    aflabel.left:=label15.left;
-    zflabel.left:=label15.left;
-    sflabel.left:=label15.left;
-    dflabel.left:=label15.left;
-    oflabel.left:=label15.left;
-  end
-  else
-  begin
-    //arm
-    Label15.visible:=false;
-    shape2.visible:=false;
-    cflabel.visible:=false;
-    pflabel.visible:=false;
-    aflabel.visible:=false;
-    zflabel.visible:=false;
-    sflabel.visible:=false;
-    dflabel.visible:=false;
-    oflabel.visible:=false;
-
-    Label16.visible:=false;
-    shape3.visible:=false;
-
-    cslabel.caption:='CSPR='+inttohex(lastdebugcontextarm.CPSR,8);
-    sslabel.visible:=false;
-    dslabel.visible:=false;
-    eslabel.visible:=false;
-    fslabel.visible:=false;
-    gslabel.visible:=false;
+      l:=tlabel(pnlFlags.controls[i]);
+      cer:=PContextElement_register(l.tag);
+      temp:=padleft(cer^.name, contexthandler.GeneralPurposeFlagMaxCharCount)+' '+cer^.getFlag(context).ToString;
+      if temp<>l.caption then
+      begin
+        l.Font.Color:=fChangedRegisterColor;
+        l.Caption:=temp;
+      end
+      else
+        l.Font.Color:=clWindowText;
+    end;
   end;
 
+  if pnlExtraRegisters.Visible then
+  begin
+    for i:=0 to pnlExtraRegisters.ControlCount-1 do
+    begin
+      l:=tlabel(pnlExtraRegisters.controls[i]);
+      cer:=PContextElement_register(l.tag);
+      temp:=padleft(cer^.name, contexthandler.GeneralPurposeRegisterMaxCharCount)+' '+cer^.getValueString(context);
+      if temp<>l.caption then
+      begin
+        l.Font.Color:=fChangedRegisterColor;
+        l.Caption:=temp;
+      end
+      else
+        l.Font.Color:=clWindowText;
+    end;
+  end;
 
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41308;
+  {}
 
   sbShowFloats.BringToFront;
   //sbShowFloats.visible:=true;
 
   if not registerview.visible then
   begin
-    setShowDebugPanels(true);
+    showdebugpaneltimer:=ttimer.Create(self);
+    showDebugPaneltimer.interval:=1;
+    showDebugPaneltimer.OnTimer:=showDebugPaneltimertimer;
+    showDebugPaneltimer.enabled:=true;
 
-    registerview.ClientWidth:=label15.left+label15.width+16+scrollbox1.VertScrollBar.Size;
-
-    scrollbox1.HorzScrollBar.Visible:=false;
+    //tthread.Queue(nil, doshowdebugpanels);
 
 
-
-
-    scrollbox1.Invalidate;
   end;
+
 
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41309;
 
   if laststack=nil then
-  begin
     getmem(laststack,stacktraceSize+64);
-    //FillMemory(pointer(ptruint(laststack)+stacktracesize),4096,$ce);
-  end;
+
 
   //get a stackview
   i:=0;
-  stackaddress:=lastdebugcontext.{$ifdef cpu64}rsp{$else}esp{$endif};
+  stackaddress:=contexthandler.StackPointerRegister^.getValue(context);
   while i<stacktracesize do
   begin
     bs:=4096-((stackaddress+i) mod 4096);
@@ -6244,7 +6185,8 @@ begin
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41311;
 
   if frmFloatingPointPanel<>nil then
-    frmFloatingPointPanel.SetContextPointer(@lastdebugcontext);
+    frmFloatingPointPanel.SetContextPointer(context);
+
 
   if not memorybrowser.Visible then
     memorybrowser.show;
@@ -6252,7 +6194,7 @@ begin
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41312;
 
   if (frmWatchlist<>nil) and (frmWatchlist.Visible) then
-    frmWatchlist.UpdateContext(@lastdebugcontext);
+    frmWatchlist.UpdateContext(context);
 
   if accessedreglist<>nil then
     freeandnil(accessedreglist);
@@ -6260,17 +6202,21 @@ begin
   if _debuggerthread<>nil then _debuggerthread.execlocation:=41313;
 
 
+  {$IFDEF WINDOWS}
+  if (debuggerthread<>nil) and debuggerthread.usingIPT and (frmiptlog<>nil) and (frmiptlog.visible) and (debuggerthread.CurrentThread<>nil) then
+  begin
+    debuggerthread.CurrentThread.getLastIPTLog(iptlog,iptlogsize);
+    frmiptlog.loadlog('',iptlog, iptlogsize);
+    freemem(iptlog);
+  end;
+  {$ENDIF}
+
+
+  registerview.OnResize(registerview);
+
+
   ApplyFollowRegister;
   ApplySourceCodeDebugUpdate;
-
-  {for i:=0 to 4095 do
-  begin
-    if pbyte(ptruint(laststack)+stacktracesize+i)^<>$ce then
-    begin
-      messagedlg('Memory corruption in the stacktrace',mtError,[mbok],0);
-      exit;
-    end;
-  end; }
 end;
 
 

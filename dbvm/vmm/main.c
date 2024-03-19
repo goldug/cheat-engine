@@ -1,6 +1,6 @@
 /* vmm.c: This is the virtual machine
  * It will be loaded at virtual address 0x00400000 (vmma.asm that is which just jumps short to intialize paging)
- * On initialisation 0 to 4MB is identity mapped, to the stored memory regions are available to mess with
+ * On initialization 0 to 4MB is identity mapped, to the stored memory regions are available to mess with
  */
 
 
@@ -424,6 +424,7 @@ void vmm_entry(void)
   APIC_SVR=IA32_APIC_BASE+APIC_SVR_OFFSET;
 
   SetPageToWriteThrough((void*)IA32_APIC_BASE);
+
 
 
 
@@ -1037,6 +1038,8 @@ AfterBPTest:
 
   InitExports();
 
+  setDR6(0xffff0ff0);
+
   //outportb(0x80,0x10);
 
   menu2();
@@ -1219,6 +1222,7 @@ void menu2(void)
     displayline("v: control register test\n");
     displayline("e: efer test\n");
     displayline("o: out of memory test\n");
+    displayline("n: NMI Test\n");
 
     if (getDBVMVersion())
     {
@@ -1233,6 +1237,7 @@ void menu2(void)
     key=0;
     while (!key)
     {
+
       if ((!loadedOS) || (showfirstmenu))
       {
 #ifdef DELAYEDSERIAL
@@ -1316,6 +1321,8 @@ void menu2(void)
           {
             UINT64 rflags;
             pcpuinfo i=getcpuinfo();
+
+            ClearDR6OnInterrupt=1;
 
 
 
@@ -1429,6 +1436,8 @@ afterWRBPtest:
             setRFLAGS(rflags | (1<<8));
 
             setRFLAGS(rflags & (~(1<<8))); //unset
+
+            ClearDR6OnInterrupt=0;
 
 
             break;
@@ -1657,6 +1666,8 @@ afterWRBPtest:
           }
 
 
+
+
           default:
             key=0;
             break;
@@ -1736,6 +1747,7 @@ void menu(void)
 #endif
     sendstring("Your command:");
 
+
 #ifndef DEBUG
     if (autostart || loadedOS)
     {
@@ -1755,8 +1767,8 @@ void menu(void)
 #endif
       if (loadedOS)
       {
-//        command='0';
-        command=waitforchar();
+        command='0';
+//        command=waitforchar();
 
       }
       else
@@ -2010,6 +2022,19 @@ void menu(void)
           break;
         }
 
+        case 'z':
+        {
+          QWORD old=getCR4();
+          sendstringf("testing cr4 value\n");
+          setCR4(0x370678);
+          sendstringf("pass 1 %8\n", getCR4());
+          setCR4(0x372678);
+          sendstringf("pass 2 %8\n", getCR4());
+          setCR4(old);
+          sendstringf("done\n");
+          break;
+        }
+
        /*
       case  'i':
         showstate();
@@ -2198,13 +2223,10 @@ void startvmx(pcpuinfo currentcpuinfo)
             clearScreen();*/
 
 
-
-
-
           launchVMX(currentcpuinfo);
 
           nosendchar[getAPICID()]=0;
-          sendstring("launchVMX returned\n");
+          sendstring("launchVMX returned. Meh\n");
           while (1) outportb(0x80,0xc9);
 
 

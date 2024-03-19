@@ -1,11 +1,16 @@
 #ifdef _WINDOWS
 #include "stdafx.h"
-#else
+#endif
+
+#ifdef __linux__
+#include "linuxport.h"
+#endif
+
+#ifdef __APPLE__
 #include "macport.h"
 #endif
 
 #include "PipeServer.h"
-
 
 
 HANDLE DataCollectorThread;
@@ -59,11 +64,22 @@ typedef int (NTAPI *ZWSETINFORMATIONTHREAD)(
     );
 #endif
 
-
+#ifdef CUSTOM_DEBUG
+FILE* CreateAndTestDebugConsole()
+{
+    FILE* f = nullptr;
+#if DEBUG_CONSOLE
+    AllocConsole();
+    freopen_s(&f, "CONOUT$", "w", stdout);
+#endif
+    return f;
+}
+#endif
 
 DWORD WINAPI DataCollectorEntry(LPVOID lpThreadParameter)
 {
 	CPipeServer *pw;
+    
     
 #ifdef _WINDOWS
 #ifdef NDEBUG
@@ -80,14 +96,31 @@ DWORD WINAPI DataCollectorEntry(LPVOID lpThreadParameter)
 #endif
 
 
+	OutputDebugString("DataCollectorEntry\n");
+
+	OutputDebugString("creating new CPipeServer instance\n");
 	pw=new CPipeServer();
-    
-   
-    
+
+#ifdef CUSTOM_DEBUG
+    FILE* console = CreateAndTestDebugConsole();
+    if (console)
+        printf("Console created!\n");
+#endif
+
+	OutputDebugString("starting CPipeServer instance\n");
 	pw->Start();
 
+    OutputDebugString("Destroying PipeServer\n");
 	DataCollectorThread=0;
 	delete pw;	
+
+#ifdef CUSTOM_DEBUG
+    if (console)
+        fclose(console);
+#if DEBUG_CONSOLE
+    FreeConsole();
+#endif
+#endif
 
 	if (SuicideThread)
 		TerminateThread(SuicideThread, 0);
@@ -95,32 +128,35 @@ DWORD WINAPI DataCollectorEntry(LPVOID lpThreadParameter)
 	Sleep(1000);
 
 #ifdef _WINDOWS
+    OutputDebugString("Freeing Memory\n");
 	FreeLibraryAndExitThread(g_hInstance, 0);
 #endif
 	return 0;
 }
 
-#ifndef _WINDOWS
+#ifdef __APPLE__
 #include <syslog.h>
+int logenabled=0;
 void MacPortEntryPoint(void *param)
 {
     
     pthread_setname_np("MonoDataCollector Thread");
-    //called by a thread
-    //openlog((char*)"Cheat Engine MDC", 0, LOG_USER);
-    //setlogmask(LOG_UPTO(LOG_DEBUG));
-    //syslog(LOG_NOTICE, (char*)"CELOGX:FUUUCK");
     
-    //OutputDebugString((char*)"MonoDataCollector for Mac loaded");
-   
+    openlog((char*)"CEMDC", 0, LOG_USER);
+    setlogmask(LOG_UPTO(LOG_DEBUG));
+    logenabled=1;
+    
     DataCollectorEntry(param);
     
 }
 #endif
 
-#ifndef _WINDOWS
+#if defined(__linux__) || defined(__ANDROID__)
+void LinuxPortEntryPoint(void *param)
+{
+    DataCollectorEntry(param);
+}
 #endif
-
 
 DWORD WINAPI SuicideCheck(LPVOID lpThreadParameter)
 {

@@ -15,7 +15,7 @@ uses
 
 {$endif}
 
-const currentversion=2000026;
+const currentversion=2000027;
 
 const FILE_ANY_ACCESS=0;
 const FILE_SPECIAL_ACCESS=FILE_ANY_ACCESS;
@@ -432,14 +432,15 @@ var kernel32dll: thandle;
 implementation
 
 {$ifdef windows}
-uses vmxfunctions, DBK64SecondaryLoader, NewKernelHandler, frmDriverLoadedUnit, CEFuncProc, Parsers;
+uses vmxfunctions, DBK64SecondaryLoader, NewKernelHandler, frmDriverLoadedUnit,
+  CEFuncProc, Parsers, mainunit2, libcepack;
 
 resourcestring
 
   rsInvalidMsrAddress = 'Invalid MSR address:';
   rsMsrsAreUnavailable = 'msrs are unavailable';
   rsCouldNotLaunchDbvm = 'Could not launch DBVM: The Intel-VT feature has been disabled in your BIOS';
-  rsYouAreMissingTheDriver = 'You are missing the driver. Try reinstalling cheat engine, and try to disable your anti-virus before doing so.';
+  rsYouAreMissingTheDriver = 'You are missing the driver. Try reinstalling '+strCheatEngine+', and try to disable your anti-virus before doing so.';
   rsDriverError = 'Driver error';
   rsFailureToConfigureTheDriver = 'Failure to configure the driver';
   rsFailureToConfigureTheUltimapDriver = 'Failure to configure the ultimap driver';
@@ -449,11 +450,14 @@ resourcestring
   rsTheServiceCouldntGetOpened = 'The service couldn''t get opened and also couldn''t get created.'+' Check if you have the needed rights to create a service, or call your system admin (Who''ll probably beat you up for even trying this). Until this is fixed you won''t be able to make use of the enhancements the driver gives you';
   rsTheDriverCouldntBeOpened = 'The driver couldn''t be opened! It''s not loaded or not responding. Luckely you are running dbvm so it''s not a total waste. Do you wish to force load the driver?';
   rsTheDriverCouldntBeOpenedTryAgain = 'The driver couldn''t be opened! It''s not loaded or not responding. I recommend to reboot your system and try again';
-  rsTheDriverThatIsCurrentlyLoaded = 'The driver that is currently loaded belongs to a different version of Cheat Engine. Please unload this driver or reboot.';
+  rsTheDriverThatIsCurrentlyLoaded = 'The driver that is currently loaded belongs to a different version of '+strCheatEngine+'. Please unload this driver or reboot.';
   rsTheDriverFailedToSuccessfullyInitialize = 'The driver failed to successfully initialize. Some functions may not completely work';
   rsAPCRules = 'APC rules';
-  rsPleaseRunThe64BitVersionOfCE = 'Please run the 64-bit version of Cheat Engine';
+  rsPleaseRunThe64BitVersionOfCE = 'Please run the 64-bit version of '+strCheatEngine;
   rsDBKError = 'DBK Error';
+  rsDBKBlockedDueToVulnerableDriverBlocklist = 'Failure starting dbk because '
+    +'the vulnerable driver blocklist is enabled and dbk has been added to it.'
+    +' Want to know how to disable this?';
 
 var dataloc: widestring;
     applicationPath: widestring;
@@ -512,9 +516,11 @@ procedure ultimap2_disable;
 var
   cc,br: dword;
 begin
-  OutputDebugString('disable ultimap2');
-  cc:=IOCTL_CE_DISABLEULTIMAP2;
-  deviceiocontrol(hultimapdevice,cc,nil,0,nil,0,br,nil);
+  if (hUltimapDevice<>0) and (hUltimapDevice<>INVALID_HANDLE_VALUE) then
+  begin
+    cc:=IOCTL_CE_DISABLEULTIMAP2;
+    deviceiocontrol(hultimapdevice,cc,nil,0,nil,0,br,nil);
+  end;
 end;
 
 
@@ -1585,6 +1591,8 @@ begin
   result:=false;
   numberofbytesread:=0;
   //find the hprocess in the handlelist, if it isn't use the normal method (I could of course use NtQueryProcessInformation but it's undocumented and I'm too lazy to dig it up
+
+  if handlemapmrew=nil then exit(windows.ReadProcessMemory(hProcess,pointer(ptrUint(lpBaseAddress)),lpBuffer,nSize,NumberOfBytesRead));
 
   handlemapmrew.Beginread;
   validhandle:=handlemap.GetData(hProcess,l);
@@ -3144,9 +3152,12 @@ var sav: pchar;
 
 //    servicestatus: _service_status;
 procedure DBK32Initialize;
+var le: integer;
 begin
-
   outputdebugstring('DBK32Initialize');
+
+  if not requiresAdmin('DBK driver') then exit;
+
   try
     if hdevice=INVALID_HANDLE_VALUE then
     begin
@@ -3164,6 +3175,7 @@ begin
       iamprotected:=false;
       apppath:=nil;
       hSCManager := OpenSCManager(nil, nil, GENERIC_READ or GENERIC_WRITE);
+
       try
         getmem(apppath,510);
         GetModuleFileNameW(0, apppath, 250);
@@ -3178,7 +3190,8 @@ begin
 
         if not fileexists(dataloc) then
         begin
-          servicename:='CEDRIVER60';
+
+          servicename:='CEDRIVER73';
           ultimapservicename:='ULTIMAP2';
           processeventname:='DBKProcList60';
           threadeventname:='DBKThreadList60';
@@ -3216,6 +3229,13 @@ begin
         end;
 
         driverloc:=extractfilepath(apppath)+sysfile;
+
+        if FileExists(driverloc)=false then
+        begin
+          if FileExists(ChangeFileExt(driverloc,'.cepack')) then
+            ceunpackfile(ChangeFileExt(driverloc,'.cepack'), driverloc, true);
+        end;
+
         ultimapdriverloc:=extractfilepath(apppath)+ultimapsysfile;
       finally
         freememandnil(apppath);
@@ -3378,13 +3398,31 @@ begin
 
           if not startservice(hservice,0,pointer(sav)) then
           begin
-            if getlasterror=577 then
+            le:=getlasterror;
+            if le=577 then
             begin
               if dbvm_version=0 then
                 messagebox(0,PChar(rsPleaseRebootAndPressF8DuringBoot),PChar(rsDbk32Error),MB_ICONERROR or mb_ok);
               failedduetodriversigning:=true;
             end; //else could already be started
+
+            if le<>1056 then
+            begin
+              if dbvm_version=0 then
+              begin
+                if dword(le)=$800B010C then
+                begin
+                  if messagebox(0, PChar(rsDBKBlockedDueToVulnerableDriverBlocklist), pchar(rsDbk32Error), MB_ICONERROR or MB_YESNO)=IDYES then
+                  begin
+                    shellexecute(0, 'open', 'https://cheatengine.org/dbkerror.php', nil, nil, sw_show);
+                  end;
+                end
+                else
+                  messagebox(0,PChar('Failure starting dbk:'+inttostr(le)),PChar(rsDbk32Error),MB_ICONERROR or mb_ok);
+              end;
+            end;
           end;
+
 
           closeservicehandle(hservice);
           hservice:=0;

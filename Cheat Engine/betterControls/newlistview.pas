@@ -5,7 +5,7 @@ unit newListView;
 {
 For people wondering WHY the first subitem has a black background when
 highlighted and not the CE version released on the website:
-lazarus 2.0.6: win32wscustomlistview.inc subfunction HandleListViewCustomDraw of
+lazarus 2.0.6(and 2.2.2): win32wscustomlistview.inc subfunction HandleListViewCustomDraw of
 ListViewParentMsgHandler
 
 originalcode:
@@ -168,9 +168,10 @@ procedure TNewListView.pp(var msg: TMessage);
 var
   p1: LPNMHDR;
   p2: LPNMCUSTOMDRAW;
+  columnid: integer;
+  c: tcolor;
 begin
-  if ShouldAppsUseDarkMode then
-  begin
+
     p1:=LPNMHDR(msg.lparam);
     if p1^.code=UINT(NM_CUSTOMDRAW) then
     begin
@@ -181,12 +182,20 @@ begin
         CDDS_PREPAINT: msg.Result:=CDRF_NOTIFYITEMDRAW;
         CDDS_ITEMPREPAINT:
         begin
-          SetTextColor(p2^.hdc, clwhite); //fDefaultTextColor);
           msg.result:=CDRF_DODEFAULT;
+          columnid:=p2^.dwItemSpec;
+
+          if (columnid>=0) and (columnid<columncount) and (column[columnid].tag<>0) then
+            c:=column[columnid].tag
+          else
+            c:=clWindowtext;
+
+
+          SetTextColor(p2^.hdc, c);
         end;
       end;
     end;
-  end;
+
 end;
 
 

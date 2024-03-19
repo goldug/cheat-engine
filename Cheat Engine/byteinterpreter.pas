@@ -70,12 +70,55 @@ var v: qword;
     d: double;
     x: PTRUINT;
 
-    i: integer;
+    i,j: integer;
     ba: PByteArray;
 
     b: tbytes;
     us: Widestring;
+
+    gs: array of string;
+
+    vs: string;
+    offsetstring: string;
+    offset: integer;
 begin
+  if variabletype=vtGrouped then //parse the groupscan result string and pass each entry to this function again
+  begin
+    //value="type[offset]:value type[offset]:value type[offset]:value"
+    gs:=value.Split([' ']); //gs[0]="type[offset]:value" gs[1]="type[offset]:value"
+
+    for i:=0 to length(gs)-1 do
+    begin
+      j:=pos(']',gs[i]);
+      if j<=0 then exit;
+      if j>=length(gs[i]) then exit;
+      if gs[i][j+1]<>':' then exit; //has to have a ]:
+
+      if (length(gs[i])>=6) and (gs[i][2]='[') then
+      begin
+        case gs[i][1] of
+          '1': variabletype:=vtByte;
+          '2': variabletype:=vtWord;
+          '4': variabletype:=vtDword;
+          '8': variabletype:=vtQword;
+          's': variabletype:=vtSingle;
+          'd': variabletype:=vtDouble;
+          else exit;
+        end;
+
+        //get the offset
+        offsetstring:=copy(gs[i],3, j-3);
+        offset:=HexStrToInt64(offsetstring);
+        value:=copy(gs[i],j+2); //everything after the :
+
+        ParseStringAndWriteToAddress(value,address+offset,variabletype);
+      end
+      else exit;
+    end;
+
+    exit;
+  end;
+
   if hexadecimal and (variabletype in [vtsingle, vtDouble]) then
   begin
     if variabletype=vtSingle then
@@ -147,6 +190,9 @@ begin
           try
             if ReadProcessMemory(processhandle, pointer(address), ba, customtype.bytesize, x) then
             begin
+              if customtype.scriptUsesString then
+                customtype.ConvertStringToData(pchar(value), ba, address)
+              else
               if customtype.scriptUsesFloat then
                 customtype.ConvertFloatToData(s, ba, address)
               else
@@ -227,6 +273,14 @@ begin
         else
           result:=inttostr(pqword(@buf[0])^);
       end;
+    end;
+
+    vtPointer:
+    begin
+      if processhandler.is64Bit then
+        result:=symhandler.getNameFromAddress(PQWord(@buf[0])^)
+      else
+        result:=symhandler.getNameFromAddress(PDWord(@buf[0])^);
     end;
 
     vtSingle:
@@ -319,14 +373,21 @@ begin
     begin
       if customtype<>nil then
       begin
-        if showashexadecimal and (customtype.scriptUsesFloat=false) then
-          result:=inttohex(customtype.ConvertDataToInteger(buf, address),8)
+        if customtype.scriptUsesString then
+        begin
+          result:=customtype.ConvertDataToString(buf, address);
+        end
         else
         begin
-          if customtype.scriptUsesFloat then
-            result:=FloatToStr(customtype.ConvertDataToFloat(buf, address))
+          if showashexadecimal and (customtype.scriptUsesFloat=false) then
+            result:=inttohex(customtype.ConvertDataToInteger(buf, address),8)
           else
-            result:=IntToStr(customtype.ConvertDataToInteger(buf, address));
+          begin
+            if customtype.scriptUsesFloat then
+              result:=FloatToStr(customtype.ConvertDataToFloat(buf, address))
+            else
+              result:=IntToStr(customtype.ConvertDataToInteger(buf, address));
+          end;
         end;
       end;
     end;
@@ -362,6 +423,12 @@ begin
     vtQword:
     begin
       if ReadProcessMemory(processhandle,pointer(address),@buf[0],8,x) then
+        result:=readAndParsePointer(address, @buf[0], variabletype, customtype, showashexadecimal, showAsSigned, bytesize);
+    end;
+
+    vtPointer:
+    begin
+      if ReadProcessMemory(processhandle,pointer(address),@buf[0],processhandler.pointersize,x) then
         result:=readAndParsePointer(address, @buf[0], variabletype, customtype, showashexadecimal, showAsSigned, bytesize);
     end;
 
@@ -769,6 +836,8 @@ begin
       //not human readable, see if there is a custom type that IS human readable
       for i:=0 to customTypes.count-1 do
       begin
+        if TCustomType(customtypes[i]).scriptUsesString then continue
+        else
         if TCustomType(customtypes[i]).scriptUsesFloat then
         begin
           //float check

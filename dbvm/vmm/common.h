@@ -6,6 +6,7 @@
 
 //#define DELAYEDSERIAL
 
+//#define USENMIFORWAIT
 #define AMDNP  //enable AMD nested paging support
 
 #ifdef DELAYEDSERIAL
@@ -92,7 +93,7 @@ typedef volatile struct _criticalSection
 {
   volatile int locked;
   volatile int apicid;
-  int lockcount;
+  volatile int lockcount;
   char *name;
   int debuglevel;
 #ifdef DEBUG
@@ -159,7 +160,8 @@ typedef union
 //extern void outportb(UINT64 port, UINT64 value);
 
 void bochsbp(void);
-void jtagbp(void);
+
+#define jtagbp() asm volatile (".byte 0xf1");
 
 /* Input a byte from a port */
 unsigned char inportb(unsigned int port);
@@ -176,8 +178,8 @@ extern void clearScreen(void);
 extern void debugbreak(void);
 
 extern void _cpuid(UINT64 *rax, UINT64 *rbx, UINT64 *rcx, UINT64 *rdx);
-extern ULONG getRSP(void);
-extern ULONG getRBP(void);
+extern UINT64 getRSP(void);
+extern UINT64 getRBP(void);
 
 int itoa(unsigned int value,int base, char *output,int maxsize);
 int lltoa(unsigned long long value,int base, char *output,int maxsize);
@@ -190,7 +192,9 @@ void printchar(char c, int x, int y, char foreground, char background);
 void printstring(char *s, int x, int y, char foreground, char background);
 void sendchar(char c);
 
-extern void enableserial(void);
+extern void _enableserial(void);
+
+void enableserial(void);
 
 
 

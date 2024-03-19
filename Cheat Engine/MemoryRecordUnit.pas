@@ -6,7 +6,7 @@ interface
 
 {$ifdef windows}
 uses
-  Windows, forms, graphics, Classes, SysUtils, controls, stdctrls, comctrls,
+  jwawindows, Windows, forms, graphics, Classes, SysUtils, controls, stdctrls, comctrls,
   symbolhandler, SymbolListHandler, cefuncproc,newkernelhandler, hotkeyhandler,
   dom, XMLRead,XMLWrite, customtypehandler, fileutil, LCLProc, commonTypeDefs,
   pointerparser, LazUTF8, LuaClass, math, betterControls, memrecDataStructures;
@@ -103,13 +103,15 @@ type
   TMemoryRecordActivateEvent=function (sender: TObject; before, currentstate: boolean): boolean of object;
   TGetDisplayValueEvent=function(sender: TObject; var value: string): boolean of object;
 
+  TMemoryRecordChangedValueEvent=procedure (sender: TObject; oldvalue: string; newvalue: string) of object;
+
   TMemoryRecord=class
   private
     fID: integer;
-    FrozenValue : string;
-    CurrentValue: string;
-    UndoValue   : string;  //keeps the last value before a manual edit
-
+    FrozenValue   : string;
+    CurrentValue  : string;
+    UndoValue     : string;  //keeps the last value before a manual edit
+    LastSeenValue : string;
 
     UnreadablePointer: boolean;
     BaseAddress: ptrUint; //Base address
@@ -172,6 +174,8 @@ type
     fonactivate, fondeactivate: TMemoryRecordActivateEvent;
     fOnDestroy: TNotifyEvent;
     fOnGetDisplayValue: TGetDisplayValueEvent;
+
+    fOnValueChanged, fOnValueChangedByUser: TMemoryRecordChangedValueEvent;
 
     fpointeroffsets: array of TMemrecOffset; //if longer than 0, this is a pointer
 
@@ -290,10 +294,11 @@ type
 
     function hasHotkeys: boolean;
 
-    function Addhotkey(keys: tkeycombo; action: TMemrecHotkeyAction; value, description: string): TMemoryRecordHotkey;
+    function Addhotkey(keys: tkeycombo; action: TMemrecHotkeyAction; value, description: string; onlyWhileDown: boolean=false): TMemoryRecordHotkey;
     function removeHotkey(hk: TMemoryRecordHotkey): boolean;
 
     procedure DoHotkey(hk :TMemoryRecordHotkey); //execute the specific hotkey action
+    procedure DoHotkeyDisable(hk :TMemoryRecordHotkey); //disable the specific hotkey
 
 
     procedure disablewithoutexecute;
@@ -377,6 +382,9 @@ type
     property Description: string read fDescription write setDescription;
     property CachedAddress: ptruint read realAddress;
     property HasMouseFocus: boolean read hasMouseOver;
+
+    property OnValueChanged: TMemoryRecordChangedValueEvent read fOnValueChanged write fOnValuechanged;
+    property OnValueChangedByUser: TMemoryRecordChangedValueEvent read fOnValueChangedByUser write fOnValueChangedByUser;
   end;
 
   THKSoundFlag=(hksPlaySound=0, hksSpeakText=1, hksSpeakTextEnglish=2); //playSound excludes speakText
@@ -389,20 +397,28 @@ type
     fdeactivateSound: string;
     fActivateSoundFlag: THKSoundFlag;
     fDeactivateSoundFlag: THKSoundFlag;
+    fValueAtActivation: string;
 
   public
     fID: integer;
     fDescription: string;
+    fOnlyWhileDown: boolean;
     fOwner: TMemoryRecord;
     keys: Tkeycombo;
     fAction: TMemrecHotkeyAction;
     fValue: string;
+    fActive: boolean;
+
+    Down: boolean;
+
+
 
 
     procedure playActivateSound;
     procedure playDeactivateSound;
 
     procedure doHotkey;
+    procedure doHotkeyDisable;
     procedure registerKeys;
     constructor create(AnOwner: TMemoryRecord);
     destructor destroy; override;
@@ -415,10 +431,12 @@ type
     property Description: string read fDescription write fDescription;
     property Action: TMemrecHotkeyAction read fAction write fAction;
     property Value: string read fValue write fValue;
+    property OnlyWhileDown: boolean read fOnlyWhileDown write fOnlyWhileDown;
     property Owner: TMemoryRecord read fOwner;
     property ID: integer read fID;
     property OnHotkey: TNotifyEvent read fOnHotkey write fOnHotkey;
     property OnPostHotkey: TNotifyEvent read fOnPostHotkey write fOnPostHotkey;
+    property Active: boolean read fActive write fActive;
   end;
 
   TMemoryRecordProcessingThread=class(TThread)
@@ -445,6 +463,10 @@ uses processhandlerunit, Parsers;
 uses mainunit, addresslist, formsettingsunit, LuaHandler, lua, lauxlib, lualib, Contnrs,
   processhandlerunit, Parsers, {$ifdef windows}winsapi,{$endif}autoassembler, globals{$ifdef windows}, cheatecoins{$endif};
 {$endif}
+
+
+resourcestring
+  rsUnknown = 'Unknown';
 
 
 {---------------------TMemoryRecordProcessingThread-------------------------}
@@ -695,6 +717,8 @@ begin
 
   keys[0]:=0;
 
+  factive:=true;
+
 end;
 
 destructor TMemoryRecordHotkey.destroy;
@@ -718,6 +742,15 @@ begin
   RegisterHotKey2(mainform.handle, -1, keys, self);
 end;
 
+procedure TMemoryRecordHotkey.doHotkeyDisable;
+begin
+  if Down then
+  begin
+    owner.DoHotkeyDisable(self);
+    down:=false;
+  end;
+end;
+
 procedure TMemoryRecordHotkey.doHotkey;
 begin
   if assigned(fonhotkey) then
@@ -726,8 +759,13 @@ begin
   if owner<>nil then //just be safe (e.g other app sending message)
     owner.DoHotkey(self);
 
+  if OnlyWhileDown then
+    down:=true;
+
   if assigned(fonPostHotkey) then
     fOnPostHotkey(self);
+
+
 end;
 
 procedure TMemoryRecordHotkey.playActivateSound;
@@ -1246,7 +1284,9 @@ end;
 
 procedure TMemoryRecord.setColor(c: TColor);
 begin
-  if c=graphics.clWindowText then  //in case clWindowText isn't good to use
+  if (c=graphics.clWindowText) or
+     (c=graphics.clDefault)
+  then  //in case clWindowText isn't good to use
     c:=clWindowtext;
 
   fColor:=c;
@@ -1372,6 +1412,10 @@ begin
   begin
     try
       fColor:=strtoint('$'+tempnode.textcontent);
+      if (fcolor=graphics.clWindowText) or
+         (fcolor=graphics.clDefault)
+      then
+        fcolor:=clWindowtext;
     except
     end;
   end;
@@ -1541,6 +1585,14 @@ begin
 
         if tempnode.ChildNodes[i].NodeName='Hotkey' then
         begin
+          a:=tempnode.ChildNodes[i].Attributes.GetNamedItem('Active');
+          if a<>nil then
+            hk.Active:=a.TextContent<>'0';
+
+          a:=tempnode.ChildNodes[i].Attributes.GetNamedItem('OnlyWhileDown');
+          if (a<>nil) then
+            hk.OnlyWhileDown:=a.TextContent='1';
+
           hk.value:='';
           ZeroMemory(@hk.keys,sizeof(TKeyCombo));
 
@@ -1854,7 +1906,7 @@ begin
     end;
   end;
 
-  if Value<>'??' then
+  if (Value<>'??') and (ssCtrl in GetKeyShiftState) then
   begin
     laststate:=cheatEntry.AppendChild(doc.CreateElement('LastState'));
     if VarType<>vtAutoAssembler then
@@ -1870,15 +1922,17 @@ begin
         laststate.Attributes.SetNamedItem(a);
       end;
     end;
+
+    if (laststate<>nil) and Active then
+    begin
+      a:=doc.CreateAttribute('Activated');
+      a.TextContent:='1';
+      laststate.Attributes.SetNamedItem(a);
+    end;
   end;
 
 
-  if (laststate<>nil) and Active then
-  begin
-    a:=doc.CreateAttribute('Activated');
-    a.TextContent:='1';
-    laststate.Attributes.SetNamedItem(a);
-  end;
+
 
 
   if showAsHex then
@@ -1893,7 +1947,9 @@ begin
   end;
 
 
-  if fcolor<>clWindowText then
+  if (fcolor<>clWindowText) and
+     (fcolor<>graphics.clDefault)
+  then
     cheatEntry.AppendChild(doc.CreateElement('Color')).TextContent:=inttohex(fcolor,6);
 
   if fisGroupHeader then
@@ -1957,6 +2013,23 @@ begin
     begin
       hk:=hks.AppendChild(doc.CreateElement('Hotkey'));
       hk.AppendChild(doc.CreateElement('Action')).TextContent:=MemRecHotkeyActionToText(hotkey[i].action);
+
+      if hotkey[i].Active=false then
+      begin
+        a:=doc.CreateAttribute('Active');
+        a.TextContent:='0';
+        hk.Attributes.SetNamedItem(a);
+      end;
+
+      if hotkey[i].OnlyWhileDown then
+      begin
+        a:=doc.CreateAttribute('OnlyWhileDown');
+        a.TextContent:='1';
+        hk.Attributes.SetNamedItem(a);
+      end;
+
+
+
       hkkc:=hk.AppendChild(doc.createElement('Keys'));
       j:=0;
       while (j<5) and (hotkey[i].keys[j]<>0) do
@@ -2169,7 +2242,7 @@ begin
   end;
 end;
 
-function TMemoryRecord.Addhotkey(keys: tkeycombo; action: TMemrecHotkeyAction; value, description: string): TMemoryRecordHotkey;
+function TMemoryRecord.Addhotkey(keys: tkeycombo; action: TMemrecHotkeyAction; value, description: string; onlyWhileDown: boolean=false): TMemoryRecordHotkey;
 {
 adds and registers a hotkey and returns the hotkey index for this hotkey
 return -1 if failure
@@ -2184,6 +2257,7 @@ begin
   hk.action:=action;
   hk.value:=value;
   hk.fdescription:=description;
+  hk.fOnlyWhileDown:=onlyWhileDown;
   hk.RegisterKeys;
 
   result:=hk;
@@ -2216,6 +2290,7 @@ begin
         end
         else
         begin
+          if (VarType=vtCustom) and (customtype.scriptUsesString) then exit;
           oldvalue:=StrToQWordEx(getvalue);
           increasevalue:=StrToQWordEx(value);
           setvalue(IntToStr(oldvalue+increasevalue));
@@ -2254,6 +2329,7 @@ begin
         end
         else
         begin
+          if (VarType=vtCustom) and (customtype.scriptUsesString) then exit;
           oldvalue:=StrToQWordEx(getvalue);
           decreasevalue:=StrToQWordEx(value);
           setvalue(IntToStr(oldvalue-decreasevalue));
@@ -2274,10 +2350,25 @@ begin
   {$ENDIF}
 end;
 
+procedure TMemoryRecord.DoHotkeyDisable(hk :TMemoryRecordHotkey); //disable the specific hotkey
+begin
+  if (hk<>nil) and (hk.owner=self) and (hk.OnlyWhileDown) then
+  begin
+    try
+      case hk.Action of
+        mrhActivate, mrhToggleActivation, mrhToggleActivationAllowIncrease, mrhToggleActivationAllowDecrease: active:=false;
+        mrhSetValue: setvalue(hk.fValueAtActivation);
+      end;
+
+    except
+    end;
+  end;
+end;
+
 procedure TMemoryRecord.DoHotkey(hk: TMemoryRecordhotkey);
 var oldstate: boolean;
 begin
-  if (hk<>nil) and (hk.owner=self) then
+  if (hk<>nil) and (hk.owner=self) and ((not hk.OnlyWhileDown) or (hk.OnlyWhileDown and (hk.down=false)) ) then
   begin
     try
       case hk.action of
@@ -2299,6 +2390,9 @@ begin
 
         mrhSetValue:
         begin
+          if hk.down=false then
+            hk.fValueAtActivation:=GetValue;
+
           SetValue(hk.value);
 
           hk.playActivateSound;
@@ -2586,7 +2680,7 @@ begin
           else
           begin
             autoassemblerdata.lastExecutionFailed:=true;
-            autoassemblerdata.lastExecutionFailedReason:='Unknown';
+            autoassemblerdata.lastExecutionFailedReason:=rsUnknown;
           end;
         except
           //running the script failed, state unchanged
@@ -2798,7 +2892,7 @@ begin
   begin
     try
 
-      if allowIncrease or allowDecrease then
+      if allowIncrease or allowDecrease  then
       begin
         //get the new value
         oldvalue:=frozenValue;
@@ -2806,6 +2900,8 @@ begin
         if showashex or (VarType in [vtByte..vtQword, vtCustom]) then
         begin
           //handle as a decimal
+
+
 
 
           if showAsHex then
@@ -2819,8 +2915,10 @@ begin
             olddecimalvalue:=StrToQWordEx(oldvalue);
           end;
 
-          if (allowIncrease and (newdecimalvalue>olddecimalvalue)) or
-             (allowDecrease and (newdecimalvalue<olddecimalvalue))
+          if (allowIncrease and ShowAsSigned and (int64(newdecimalvalue)>int64(olddecimalvalue))) or
+             (allowIncrease and (not ShowAsSigned) and (newdecimalvalue>olddecimalvalue)) or
+             (allowDecrease and (ShowAsSigned) and (int64(newdecimalvalue)<int64(olddecimalvalue))) or
+             (allowDecrease and (not ShowAsSigned) and (newdecimalvalue<olddecimalvalue))
           then
             frozenvalue:=newvalue;
 
@@ -2993,6 +3091,11 @@ begin
       begin
         if fcustomtype<>nil then
         begin
+          if fCustomType.scriptUsesString then
+          begin
+            result:=fCustomType.ConvertDataToString(buf, realaddress);
+          end
+          else
           if fcustomtype.scriptUsesFloat then
           begin
             if ShowAsHex then  //so stupid, but whatever
@@ -3066,6 +3169,11 @@ begin
   end;
 
   freememandnil(buf);
+
+  if assigned(fOnValueChanged) and (result<>LastSeenValue) then
+    fOnValueChanged(self, LastSeenValue, result);
+
+  LastSeenValue:=result;
 end;
 
 function TMemoryrecord.canUndo: boolean;
@@ -3128,7 +3236,7 @@ var
   check: boolean;
 
   oldluatop: integer;
-  vpe: boolean;
+  vpe: boolean=false;
 
   setvaluescript: Tstringlist;
 
@@ -3137,6 +3245,8 @@ var
   f: single;
 
   newundovalue: string;
+
+  suspended: boolean;
 begin
   //check if it is a '(description)' notation
 
@@ -3222,7 +3332,7 @@ begin
             end;
 
 
-            '-','+','/','*': usesMath:=true;
+            '-','+','/','*': if i>1 then usesMath:=true;
 
           end;
           inc(i);
@@ -3276,6 +3386,7 @@ begin
   if fisGroupHeader then exit;
 
 
+
   currentValue:={utf8toansi}(v);
 
   if fShowAsHex and (not (vartype in [vtSingle, vtDouble, vtByteArray, vtString] )) then
@@ -3305,9 +3416,25 @@ begin
 
   getmem(buf,bufsize+2);
 
+  suspended:=false;
+  if SystemSupportsWritableExecutableMemory or SkipVirtualProtectEx then
+  begin
+    vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle, pointer(realAddress), bufsize, PAGE_EXECUTE_READWRITE, originalprotection);
+  end
+  else
+  begin
+    if (SkipVirtualProtectEx=false) and (iswritable(realaddress)=false) then
+    begin
 
-  vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle, pointer(realAddress), bufsize, PAGE_EXECUTE_READWRITE, originalprotection);
+      if processid<>GetCurrentProcessId then
+      begin
+        ntsuspendProcess(processhandle);
+        suspended:=true;
+      end;
 
+      vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle, pointer(realAddress), bufsize, PAGE_READWRITE, originalprotection);
+    end;
+  end;
   try
 
 
@@ -3348,6 +3475,11 @@ begin
       begin
         if fcustomtype<>nil then
         Begin
+          if fcustomtype.scriptUsesString then
+          begin
+            fCustomType.ConvertStringToData(pchar(v), pb, RealAddress); //utf8 format
+          end
+          else
           if fcustomtype.scriptUsesFloat then
           begin
             if not fShowAsHex then
@@ -3490,14 +3622,25 @@ begin
     if vpe then
       VirtualProtectEx(processhandle, pointer(realAddress), bufsize, originalprotection, originalprotection);
 
+    if suspended then
+      ntresumeProcess(processhandle);
   end;
 
   freememandnil(buf);
 
   frozenValue:=unparsedvalue;     //we got till the end, so update the frozen value
 
-  if (not isfreezer) and (GetValue<>newundovalue) then
-    undovalue:=newundovalue;
+  if (not isfreezer) then
+  begin
+    if (GetValue<>newundovalue) then
+      undovalue:=newundovalue;
+
+    if assigned(fOnValueChangedByUser) then
+      fOnValueChangedByUser(self, newundovalue, LastSeenValue);
+  end;
+
+
+
 
 end;
 

@@ -1,3 +1,5 @@
+// Copyright Cheat Engine. All Rights Reserved.
+
 unit frmSourceDisplayUnit;
 
 {$mode objfpc}{$H+}
@@ -6,16 +8,25 @@ interface
 
 uses
   Classes, SysUtils, LResources, Forms, Controls, Graphics, Dialogs, ComCtrls,
-  ExtCtrls, Menus, SynEdit, SynEditMarks, SynHighlighterCpp,
-  MemoryBrowserFormUnit, tcclib, betterControls, SynGutterBase;
+  ExtCtrls, Menus, SynEdit, SynEditMarks, SynHighlighterCpp, disassembler,
+  MemoryBrowserFormUnit, tcclib, betterControls, SynGutterBase, debugeventhandler,
+  BreakpointTypeDef;
 
 type
 
   { TfrmSourceDisplay }
 
   TfrmSourceDisplay = class(TForm)
+    itInfo: TIdleTimer;
     ilDebug: TImageList;
     MenuItem1: TMenuItem;
+    MenuItem2: TMenuItem;
+    MenuItem3: TMenuItem;
+    MenuItem4: TMenuItem;
+    MenuItem5: TMenuItem;
+    MenuItem6: TMenuItem;
+    MenuItem7: TMenuItem;
+    N1: TMenuItem;
     PopupMenu1: TPopupMenu;
     seSource: TSynEdit;
     SynCppSyn1: TSynCppSyn;
@@ -32,9 +43,14 @@ type
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormShow(Sender: TObject);
+    procedure itInfoTimer(Sender: TObject);
     procedure MenuItem1Click(Sender: TObject);
     procedure seSourceGutterClick(Sender: TObject; X, Y, Line: integer;
       mark: TSynEditMark);
+    procedure seSourceMouseEnter(Sender: TObject);
+    procedure seSourceMouseLeave(Sender: TObject);
+    procedure seSourceMouseMove(Sender: TObject; Shift: TShiftState; X,
+      Y: Integer);
     procedure tbRunClick(Sender: TObject);
     procedure tbRunTillClick(Sender: TObject);
     procedure tbStepIntoClick(Sender: TObject);
@@ -42,8 +58,15 @@ type
     procedure tbStepOverClick(Sender: TObject);
     procedure tbToggleBreakpointClick(Sender: TObject);
   private
+    hintwindow:THintWindow;
     LoadedPosition: boolean;
+    SourceCodeInfo: TSourceCodeInfo;
 
+    d: TDisassembler;
+    stepIntoThread: TDebugThreadHandler;
+    stepIntoCountdown: integer; //counter to make sure it doesn't step too long (15 instructions max)
+
+    function StepIntoHandler(sender: TDebugThreadHandler; bp: PBreakpoint): boolean;
   public
     function updateMarks:boolean; //returns true if the current breakpoint matches a line in this source
   end;
@@ -54,15 +77,18 @@ type
 
 implementation
 
-uses maps, debughelper, cedebugger, CEFuncProc, SynHighlighterAA, BreakpointTypeDef,
-  debuggertypedefinitions, sourcecodehandler;
+uses maps, debughelper, cedebugger, CEFuncProc, SynHighlighterAA,
+  debuggertypedefinitions, sourcecodehandler, ProcessHandlerUnit, byteinterpreter,
+  commonTypeDefs, NewKernelHandler, globals;
 
 { TfrmSourceDisplay }
 
 var sourceDisplayForms: TMap;  //searchable by sourcefile strings object
 
 function getSourceViewForm(lni: PLineNumberInfo): TfrmSourceDisplay;
-var sc: tstringlist;
+var
+  sc: tstringlist;
+
 begin
   if lni=nil then exit(nil);
 
@@ -89,6 +115,12 @@ begin
   end;
 
   result.seSource.CaretY:=lni^.linenr;
+
+  result.SourceCodeInfo:=SourceCodeInfoCollection.getSourceCodeInfo(lni^.functionaddress);
+
+  if result.SourceCodeInfo<>nil then
+    result.SourceCodeInfo.parseFullStabData;
+
 end;
 
 procedure ApplySourceCodeDebugUpdate;
@@ -154,14 +186,17 @@ begin
       begin
         mark.imageindex:=2;
         sesource.CaretY:=i+1;
+        hasrip:=true;
         result:=true;
-      end;
+      end
+      else
+        hasrip:=false;
 
-      a:= ptruint(seSource.Lines.Objects[i]) ;
+
       if (debuggerthread<>nil) and (debuggerthread.isBreakpoint(a)<>nil) then
       begin
         //2(bp, no rip), or 3(bp, rip)
-        if not result then //result=true when address is rup
+        if hasrip=false then
           mark.ImageIndex:=2
         else
           mark.ImageIndex:=3;
@@ -169,7 +204,7 @@ begin
       else
       begin
         //0(no rip) or 1(rip)
-        if not result then
+        if hasrip=false then
           mark.ImageIndex:=0
         else
           mark.ImageIndex:=1;
@@ -193,15 +228,44 @@ begin
 
   LoadedPosition:=LoadFormPosition(self);
 
+  if overridefont<>nil then
+    seSource.Font.size:=overridefont.size
+  else
+    seSource.Font.Size:=10;
+
 end;
 
 procedure TfrmSourceDisplay.FormDestroy(Sender: TObject);
-
+var
+  l: TList;
+  i: integer;
 begin
   SaveFormPosition(self);
 
+  itInfo.AutoEnabled:=false;
+  itInfo.Enabled:=false;
+  itinfo.free;
+  itinfo:=nil;
+
   if sourceDisplayForms<>nil then //delete this form from the map
     sourceDisplayForms.Delete(tag);
+
+  if d<>nil then
+    freeandnil(d);
+
+  if stepIntoThread<>nil then //it still has an onhandlebreak set
+  begin
+    //first make sure that the stepIntoThread is still alive
+    if debuggerthread<>nil then
+    begin
+      l:=debuggerthread.lockThreadlist;
+
+      if l.IndexOf(stepIntoThread)<>-1 then //still alive
+        stepIntoThread.OnHandleBreakAsync:=nil;
+
+      debuggerthread.unlockThreadlist;
+    end;
+  end;
 end;
 
 procedure TfrmSourceDisplay.FormShow(Sender: TObject);
@@ -211,6 +275,197 @@ begin
     width:=(Screen.PixelsPerInch div 96)*800;
     height:=(Screen.PixelsPerInch div 96)*600;
   end;
+end;
+
+procedure TfrmSourceDisplay.itInfoTimer(Sender: TObject);
+var
+  p,p2,p3: tpoint;
+  token: string;
+  varinfo: TLocalVariableInfo;
+  address,ptr: ptruint;
+
+  ln: integer;
+  i: integer;
+
+  l1,l2: integer;
+
+  str: string;
+  offsettext: string;
+  value: string;
+
+  br: ptruint;
+
+  r: trect;
+
+begin
+  //get the token under the mouse cursor and look it up
+  itInfo.Enabled:=false;
+  itInfo.AutoEnabled:=false;
+
+  if hintwindow<>nil then
+    hintwindow.hide;
+
+  //if not Active then exit;
+
+
+  str:='';
+  p:=mouse.cursorpos;
+
+  p2:=seSource.ScreenToClient(p);
+
+  if (p2.x<0) or (p2.x>sesource.ClientWidth) or
+     (p2.y<0) or (p2.y>sesource.ClientWidth) then exit;
+
+  if p2.x<seSource.Gutter.Width then exit; //gutter stuff
+
+  p3:=seSource.PixelsToLogicalPos(p2);
+
+  token:=sesource.GetWordAtRowCol(p3);
+  if trim(token)='' then exit;
+
+  if SourceCodeInfo<>nil then
+  begin
+    ln:=p3.y-1;
+
+    if (debuggerthread<>nil) and (debuggerthread.CurrentThread<>nil) then
+    begin
+      address:=debuggerthread.CurrentThread.context^.{$ifdef cpu64}Rip{$else}eip{$endif};
+      if SourceCodeInfo.getVariableInfo(token, address, varinfo) then
+      begin
+
+
+        address:=debuggerthread.CurrentThread.context^.{$ifdef cpu64}Rbp{$else}ebp{$endif}+varinfo.offset;
+        str:=varinfo.name+' at '+inttohex(address,8);
+        if varinfo.ispointer then
+        begin
+          ptr:=0;
+          if ReadProcessMemory(processhandle, pointer(address), @ptr,processhandler.pointersize,br) then
+          begin
+            address:=ptr;
+            str:=str+'->'+inttohex(address,8);
+          end
+          else
+          begin
+            address:=0;
+            str:=str+'->???';
+          end;
+        end;
+
+        if address<>0 then
+        begin
+
+          value:='';
+
+          case varinfo.vartype of
+            1: value:=readAndParseAddress(address, vtDword,nil,false,true); //integer
+            2: value:=readAndParseAddress(address,vtByte, nil,false,true); //char
+            {$ifdef windows}
+            3: value:=readAndParseAddress(address,vtDword, nil,false,true); //long.  4 byte on PE, 8 byte on elf when in 64-bit.
+            {$else}
+            3:
+              if processhandler.is64Bit then
+                value:=readAndParseAddress(address, vtQword, nil,false,true)
+              else
+                value:=readAndParseAddress(address, vtDword, nil,false,true);
+            {$endif}
+            4: value:=readAndParseAddress(address, vtDword,nil,false,false); //unsigned integer
+            {$ifdef windows}
+            5: value:=readAndParseAddress(address,vtDword, nil,false,false); //long unsigned
+            {$else}
+            5:
+              if processhandler.is64Bit then
+                value:=readAndParseAddress(address, vtQword, nil,false,false)
+              else
+                value:=readAndParseAddress(address, vtDword, nil,false,false);
+            {$endif}
+            6,8: value:=readAndParseAddress(address,vtQword, nil,false,true); //int64
+            7,9: value:=readAndParseAddress(address,vtQword, nil,false,false); //uint64
+            10: value:=readAndParseAddress(address,vtWord, nil,false,true); //signed word
+            11: value:=readAndParseAddress(address,vtWord, nil,false,false); //unsigned word
+            12: value:=readAndParseAddress(address,vtByte, nil,false,true); //signed byte
+            13: value:=readAndParseAddress(address,vtByte, nil,false,false); //unsigned byte
+            14,17: value:=readAndParseAddress(address,vtSingle, nil,false,false); //float
+            15,18: value:=readAndParseAddress(address,vtDouble, nil,false,false); //double
+            16: value:=readAndParseAddress(address,vtDouble, nil,false,false); //meh
+
+            25: value:=readAndParseAddress(address,vtByte, nil,false,false); //unsigned char
+            26: value:=readAndParseAddress(address,vtByte, nil,false,false); //bool
+            27: value:='<void>';
+          end;
+
+          if value<>'' then
+            str:=str+' value='+value;
+        end;
+      end
+      else exit;
+    end
+    else
+    begin
+      address:=ptruint(seSource.Lines.Objects[ln]); //get basic info like the offset and type
+
+      if address=0 then //look around
+      begin
+        i:=1;
+        while i<25 do
+        begin
+          l1:=ln-i;
+          l2:=ln+i;
+
+          if (l1>0) and (l1<sesource.lines.count-1) and (ptruint(seSource.Lines.Objects[l1])<>0) then
+          begin
+            address:=ptruint(seSource.Lines.Objects[l1]);
+            break;
+          end;
+
+          if (l2>0) and (l2<sesource.lines.count-1) and (ptruint(seSource.Lines.Objects[l2])<>0) then
+          begin
+            address:=ptruint(seSource.Lines.Objects[l2]);
+            break;
+          end;
+
+          inc(i);
+        end;
+      end;
+
+      if address=0 then exit;
+
+      if SourceCodeInfo.getVariableInfo(token, address, varinfo) then
+      begin
+        //show basic info
+        if varinfo.offset<0 then
+          offsettext:='-'+IntToHex(-varinfo.offset,2)
+        else
+          offsettext:='+'+IntToHex(varinfo.offset,2);
+
+        if processhandler.is64Bit then
+          offsettext:='RBP'+offsettext
+        else
+          offsettext:='EBP'+offsettext;
+
+        str:=varinfo.name+' at '+offsettext;
+      end else exit;
+    end;
+
+    if str<>'' then
+    begin
+      if hintwindow=nil then
+        hintwindow:=THintWindow.Create(self);
+
+      r:=hintwindow.CalcHintRect(sesource.width, str, nil);
+
+
+      r.Top:=r.top+p.y;
+      r.Left:=r.left+p.x;
+      r.Right:=r.right+p.x;
+      r.Bottom:=r.Bottom+p.y;
+
+      hintwindow.ActivateHint(r, str);
+    end;
+
+  end;
+
+
+
 end;
 
 procedure TfrmSourceDisplay.MenuItem1Click(Sender: TObject);
@@ -273,6 +528,28 @@ begin
   end;
 end;
 
+procedure TfrmSourceDisplay.seSourceMouseEnter(Sender: TObject);
+begin
+  itInfo.enabled:=false;
+  itInfo.AutoEnabled:=true;
+end;
+
+procedure TfrmSourceDisplay.seSourceMouseLeave(Sender: TObject);
+begin
+  itInfo.enabled:=false;
+  itInfo.AutoEnabled:=false;
+end;
+
+procedure TfrmSourceDisplay.seSourceMouseMove(Sender: TObject;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  itInfo.Enabled:=false;
+  itInfo.AutoEnabled:=true;
+
+  if hintwindow<>nil then
+    hintwindow.hide;
+end;
+
 procedure TfrmSourceDisplay.tbRunClick(Sender: TObject);
 begin
   MemoryBrowser.miDebugRun.Click;
@@ -290,12 +567,80 @@ begin
   end;
 
   if debuggerthread<>nil then
+  begin
     debuggerthread.ContinueDebugging(co_runtill, address);
+    MemoryBrowser.OnMemoryViewerRunning;
+  end;
+end;
+
+function TfrmSourceDisplay.StepIntoHandler(sender: TDebugThreadHandler; bp: PBreakpoint): boolean;
+var a: ptruint;
+  sci: TSourceCodeInfo;
+begin
+  if stepintocountdown>0 then
+  begin
+    if bp<>nil then //nil when single stepping
+    begin
+      //a normal bp got hit, stop the stepping
+      sender.OnHandleBreakAsync:=nil;
+      stepIntoThread:=nil;
+      stepIntoCountdown:=0;
+      exit(false);
+    end;
+
+    //check if this is a call or ret, if so, set the stepintocountdown to 1 and set stepFinished:=true;
+    if d=nil then
+      d:=TDisassembler.Create; //even though this is async, it's still only 1 single thread, so this is safe
+
+
+    a:=sender.context^.{$ifdef cpu64}rip{$else}eip{$endif};
+    sci:=SourceCodeInfoCollection.getSourceCodeInfo(a);
+
+    if (sci<>nil) and (sci.getLineInfo(a)<>nil) then
+    begin
+      //found a sourcecode line
+      sender.OnHandleBreakAsync:=nil;
+      stepIntoThread:=nil;
+      stepIntoCountdown:=0;
+      exit(false); //do an actual break
+    end;
+
+
+
+    d.disassemble(a);
+    if d.LastDisassembleData.iscall or d.LastDisassembleData.isret then
+    begin
+      sender.OnHandleBreakAsync:=nil;
+      stepIntoThread:=nil;
+      stepIntoCountdown:=0;
+      //followed by a single step
+    end;
+
+    dec(stepIntoCountdown);
+    sender.continueDebugging(co_stepinto);
+    exit(true);// handled
+  end
+  else
+  begin
+    sender.OnHandleBreakAsync:=nil;
+    stepIntoThread:=nil;
+    stepIntoCountdown:=0;
+    sender.continueDebugging(co_run); //screw this , abandoning this stepping session
+    exit(true);
+  end;
 end;
 
 procedure TfrmSourceDisplay.tbStepIntoClick(Sender: TObject);
 begin
-  memorybrowser.miDebugStep.click; //todo: start a single step session that goes on until a ret or a call, and then follow that call and see if it ends up in a sourcecode available function or not
+
+  stepIntoCountdown:=15;
+  stepIntoThread:=debuggerthread.CurrentThread;
+
+  debuggerthread.CurrentThread.OnHandleBreakAsync:=@StepIntoHandler;
+
+
+  debuggerthread.ContinueDebugging(co_stepinto);
+  memorybrowser.OnMemoryViewerRunning;
 end;
 
 procedure TfrmSourceDisplay.tbStepOutClick(Sender: TObject);
@@ -318,7 +663,7 @@ begin
 
     if sci<>nil then
     begin
-      lni:=sci.get(currentaddress);
+      lni:=sci.getLineInfo(currentaddress);
       if lni<>nil then
       begin
         linestart:=lni^.sourcefile.IndexOfObject(tobject(currentaddress));
@@ -330,12 +675,13 @@ begin
           nextaddress:=ptruint(sesource.lines.Objects[i]);
           if nextaddress<>0 then
           begin
-            lni2:=sci.get(nextaddress);
+            lni2:=sci.getLineInfo(nextaddress);
             if lni2<>nil then //never
             begin
               if lni^.functionaddress<>lni2^.functionaddress then break; //different function.  So return
 
               debuggerthread.ContinueDebugging(co_runtill, nextaddress);
+              memorybrowser.OnMemoryViewerRunning;
               exit;
             end;
 

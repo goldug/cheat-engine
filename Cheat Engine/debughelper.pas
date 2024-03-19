@@ -6,7 +6,7 @@ interface
 
 uses
   {$ifdef darwin}
-  macport,macexceptiondebuggerinterface, LCLIntf,LCLType,
+  macport, macexceptiondebuggerinterface, LCLIntf,LCLType,
   {$endif}
   {$ifdef windows}
   Windows,  KernelDebuggerInterface, WindowsDebugger,
@@ -15,13 +15,15 @@ uses
   foundcodeunit, debugeventhandler, CEFuncProc, newkernelhandler, comctrls,
   debuggertypedefinitions, formChangedAddresses, frmTracerUnit, VEHDebugger,
   DebuggerInterfaceAPIWrapper, DebuggerInterface,symbolhandler,
-  fgl, disassembler, NetworkDebuggerInterface, Clipbrd, commonTypeDefs ,BreakpointTypeDef;
+  fgl, disassembler, NetworkDebuggerInterface, Clipbrd, commonTypeDefs ,
+  BreakpointTypeDef,iptnative{$ifdef darwin},  macportdefines{$endif};
 
 {$warn 4056 off}
 
 
 type
 
+  EDebuggerAttachException=class(Exception);
 
   TDebuggerthread = class(TThread)
   private
@@ -49,6 +51,9 @@ type
 
 
     fcurrentThread: TDebugThreadHandler;
+    hasfetchediptlog: boolean;
+
+
     globalDebug: boolean; //kernelmode debugger only
 
     fRunning: boolean;
@@ -61,7 +66,22 @@ type
     pid: THandle;
 
     GUIObjectToFree: TObject;
+
+    {$ifdef windows}
+    fetchediptlog: boolean;
+
+    fulliptlog: PIPT_TRACE_DATA;
+    fulliptlogsize: dword;
+    {$endif}
+
+
+    launchanyhow: boolean;
+    {$ifdef windows}
+    usesipt: boolean;
+    {$endif}
+    errormessage:string;
     procedure sync_FreeGUIObject;
+    procedure vmwareRunningAskLaunch;
 
 
     procedure DBVMSteppingLost(sender: TObject);
@@ -76,7 +96,7 @@ type
     procedure FindCodeByBP(address: uint_ptr; size: integer; bpt: TBreakpointTrigger; breakpointmethod: TBreakpointMethod); overload;
     procedure FindCodeByBP(address: uint_ptr; size: integer; bpt: TBreakpointTrigger); overload;
 
-    function AddBreakpoint(owner: PBreakpoint; address: uint_ptr; size: integer; bpt: TBreakpointTrigger; bpm: TBreakpointMethod; bpa: TBreakpointAction; debugregister: integer=-1; foundcodedialog: Tfoundcodedialog=nil; threadID: dword=0; frmchangedaddresses: Tfrmchangedaddresses=nil; FrmTracer: TFrmTracer=nil; tcount: integer=0; changereg: pregistermodificationBP=nil; OnBreakpoint: TBreakpointEvent=nil): PBreakpoint;
+    function AddBreakpoint(owner: PBreakpoint; address: uint_ptr; size: integer; bpt: TBreakpointTrigger; bpm: TBreakpointMethod; bpa: TBreakpointAction; debugregister: integer=-1; foundcodedialog: Tfoundcodedialog=nil; threadID: dword=0; frmchangedaddresses: Tfrmchangedaddresses=nil; FrmTracer: TFrmTracer=nil; tcount: integer=0; changereg: pointer=nil; OnBreakpoint: TBreakpointEvent=nil): PBreakpoint;
 
 
     function AdjustAccessRightsWithActiveBreakpoints(ar: TAccessRights; base: ptruint; size: integer): TAccessRights;
@@ -115,7 +135,8 @@ type
     function  isBreakpoint(address: uint_ptr; address2: uint_ptr=0; includeinactive: boolean=false): PBreakpoint;
     function  CodeFinderStop(codefinder: TFoundCodeDialog): boolean;
     function  setChangeRegBreakpoint(regmod: PRegisterModificationBP): PBreakpoint;
-    procedure setBreakAndTraceBreakpoint(frmTracer: TFrmTracer; address: ptrUint; BreakpointTrigger: TBreakpointTrigger; breakpointmethod: TBReakpointmethod; bpsize: integer; count: integer; startcondition:string=''; stopcondition:string=''; stepover: boolean=false; nosystem: boolean=false);
+    function  setChangeRegBreakpointEx(regmod: PRegisterModificationBPEx): PBreakpoint;
+    procedure setBreakAndTraceBreakpoint(frmTracer: TFrmTracer; address: ptrUint; BreakpointTrigger: TBreakpointTrigger; breakpointmethod: TBReakpointmethod; bpsize: integer; count: integer; startcondition:string=''; stopcondition:string=''; stepover: boolean=false; stepoverrep: boolean=false; nosystem: boolean=false; stayInsideModule: boolean=false);
     function  stopBreakAndTrace(frmTracer: TFrmTracer): boolean;
     function FindWhatCodeAccesses(address: uint_ptr; FoundCodeDialog:TFoundCodeDialog=nil): tfrmChangedAddresses;
     function  FindWhatCodeAccessesStop(frmchangedaddresses: Tfrmchangedaddresses): boolean;
@@ -153,11 +174,22 @@ type
     procedure startBranchMapper(tidlist: tlist=nil);
     procedure stopBranchMapper;
 
+    {$ifdef windows}
+    function initIntelPTTracing: boolean;
+    procedure stopIntelPTTracing;
+
+    function getLastIPT(var log: pointer; var size: integer): boolean;
+    {$else}
+    procedure showerror;
+    {$endif}
     property CurrentThread: TDebugThreadHandler read getCurrentThread write setCurrentThread;
     property NeedsToSetEntryPointBreakpoint: boolean read fNeedsToSetEntryPointBreakpoint;
     property running: boolean read fRunning;
 
     property usesGlobalDebug: boolean read globalDebug;
+    {$ifdef windows}
+    property usingIPT: boolean read usesipt;
+    {$endif}
 
     procedure Terminate;
     procedure Execute; override;
@@ -182,7 +214,9 @@ implementation
 uses CEDebugger, KernelDebugger, formsettingsunit, FormDebugStringsUnit,
      frmBreakpointlistunit, plugin, memorybrowserformunit, autoassembler,
      pluginexports, networkInterfaceApi, ProcessHandlerUnit, Globals, LuaCaller,
-     vmxfunctions, LuaHandler, frmDebuggerAttachTimeoutUnit, DBVMDebuggerInterface;
+     vmxfunctions, LuaHandler, frmDebuggerAttachTimeoutUnit, DBVMDebuggerInterface,
+     symbolhandlerstructs, contexthandler, GDBServerDebuggerInterface,
+     gdbserverconnectdialog, LazLogger;
 
 //-----------Inside thread code---------
 
@@ -243,6 +277,16 @@ resourcestring
   rsDepSettingTimeout = 'Timeout while trying to set DEP policy. Continue with'
     +' the breakpoint?';
   rsDebuggerAttachAborted = 'Debugger attach aborted';
+  rsVMWareIsRunningIPTBAD = 'VMWare seems to be running. It''s known that some'
+    +' versions of vmware will cause a BSOD in combination with intel IPT. Do '
+    +'you still want to use intel IPT?';
+
+{$ifndef windows}
+procedure TDebuggerthread.showerror;
+begin
+  showmessage(errormessage);
+end;
+{$endif}
 
 procedure TDebuggerthread.Execute;
 var
@@ -260,10 +304,10 @@ var
   code,data: ptrUint;
   s: tstringlist;
   allocs: TCEAllocarray;
+  hasSetAttached: boolean;
 
 begin
-  if IsDebuggerPresent() then
-    self.NameThreadForDebugging('Debugger thread');
+  self.NameThreadForDebugging('Debugger thread', GetCurrentThreadId);
 
   if terminated then exit;
 
@@ -334,14 +378,26 @@ begin
 
       debugging := True;
 
+      {$IFDEF WINDOWS}
+      if systemSupportsIntelPT and useintelptfordebug then
+        initIntelPTTracing;
+      {$ENDIF}
 
+
+      hasSetAttached:=false;
       while (not terminated) and debugging do
       begin
 
         execlocation:=1;
 
-        if CurrentDebuggerInterface.needsToAttach=false then
-          OnAttachEvent.SetEvent; //no need to wait if the debufferinterface does not need to wait
+        if (CurrentDebuggerInterface.needsToAttach=false) and (hasSetAttached=false) then
+        begin
+          OnAttachEvent.SetEvent; //no need to wait if the debuggerinterface does not need to wait
+          hasSetAttached:=true;
+        end;
+        {$IFDEF WINDOWS}
+        fetchediptlog:=false;
+        {$ENDIF}
 
 
         if WaitForDebugEvent(debugEvent, 100) then
@@ -384,13 +440,41 @@ begin
 
     except
       on e: exception do
-        messagebox(0, pchar(utf8toansi(rsDebuggerCrash)+':'+e.message+rsLastLocation+inttostr(execlocation)+')'), '', 0);
+      begin
+        errormessage:=utf8toansi(rsDebuggerCrash)+':'+e.message+rsLastLocation+inttostr(execlocation)+')';
+        if cedebugsymbolspresent then
+        begin
+          DebugLn('-----------------');
+          DebugLn(errormessage);
+          lazlogger.DumpExceptionBackTrace;
+
+          errormessage:=errormessage+#13#10'Please send the cedebug.txt file to Dark Byte. Thanks';
+        end;
+
+        {$ifdef windows}
+        messagebox(0, pchar(errormessage), '', 0);
+        {$else}
+        errormessage:=utf8toansi(rsDebuggerCrash)+':'+e.message+rsLastLocation+inttostr(execlocation)+')';
+        synchronize(showerror);
+        {$endif}
+      end;
     end;
 
   finally
     outputdebugstring('End of debugger');
+
+    {$IFDEF WINDOWS}
+    if usesipt then
+      StopProcessIptTracing(processhandle);
+    {$ENDIF}
+
     if currentprocesid <> 0 then
-      debuggerinterfaceAPIWrapper.DebugActiveProcessStop(currentprocesid);
+    begin
+      outputdebugstring('calling DebugActiveProcessStop');
+      debuggerinterfaceAPIWrapper.DebugActiveProcessStop(currentprocesid)
+    end
+    else
+      outputdebugstring('currentprocesid==0');
 
     terminate;
     OnAttachEvent.SetEvent;
@@ -428,48 +512,58 @@ happened, and the breakpoints have already been disabled
 idle can be false if called from a thread that needed to clear it's breakpoint from an deleted breakpoint
 }
 var
-  i: integer;
+  i,j: integer;
   bp: PBreakpoint;
   deleted: boolean;
   updated: boolean;
 begin
-
+  execlocation:=500;
   i:=0;
   updated:=false;
   debuggercs.enter;
   try
+    execlocation:=501;
     while i<Breakpointlist.Count do
     begin
+      execlocation:=502;
       deleted:=false;
+
 
       bp:=PBreakpoint(breakpointlist[i]);
       if bp^.markedfordeletion then
       begin
+        execlocation:=5021;
         if bp^.referencecount=0 then
         begin
           if not bp^.active then
           begin
+            execlocation:=5022;
             if (bp^.deletecountdown=0) or ((CurrentThread<>nil) and (currentthread.ThreadId=bp^.threadid)) then  //if countdown is 0, of it's a threadspecific bp and it's comming from the current threadid
             begin
               outputdebugstring('cleanupDeletedBreakpoints: deleting bp');
               breakpointlist.Delete(i);
 
-              if (bp^.FoundcodeDialog<>nil) then
+              if (bp^.owner=nil) then
               begin
-                //the foundcode dialog was closed(refcount=0), so can be deleted now
-                GUIObjectToFree:=bp^.FoundcodeDialog;
-                Synchronize(sync_FreeGUIObject);
+                if (bp^.FoundcodeDialog<>nil) then
+                begin
+                  //the foundcode dialog was closed(refcount=0), so can be deleted now
+                  GUIObjectToFree:=bp^.FoundcodeDialog;
+                  Synchronize(sync_FreeGUIObject);
 
-                bp^.FoundcodeDialog:=nil;
+                  bp^.FoundcodeDialog:=nil;
+                end;
+
+                if (bp^.frmchangedaddresses<>nil) then
+                begin
+                  GUIObjectToFree:=bp^.frmchangedaddresses;
+                  Synchronize(sync_FreeGUIObject);
+                  bp^.frmchangedaddresses:=nil;
+                end;
               end;
 
-              if (bp^.frmchangedaddresses<>nil) then
-              begin
-                GUIObjectToFree:=bp^.frmchangedaddresses;
-                Synchronize(sync_FreeGUIObject);
 
-                bp^.frmchangedaddresses:=nil;
-              end;
+
 
               if bp^.conditonalbreakpoint.script<>nil then
                 StrDispose(bp^.conditonalbreakpoint.script);
@@ -479,6 +573,16 @@ begin
 
               if assigned(bp^.OnBreakpoint) then
                 LuaCaller.CleanupLuaCall(TMethod(bp^.OnBreakpoint));
+
+              execlocation:=5023;
+              if bp^.changeregEx.context<>nil then
+                freememandnil(bp^.changeregEx.context);
+
+              if bp^.changeregEx.mask<>nil then
+                freememandnil(bp^.changeregEx.mask);
+
+              execlocation:=5024;
+
 
               freememandnil(bp);
 
@@ -733,6 +837,12 @@ either by setting the appropriate byte in the code to $cc, or setting the approp
 }
 var
   Debugregistermask: dword;
+  {$ifdef darwin}
+  wcr: parm_watchpoint_control_register64_t;
+  wvr: pqword;
+  bcr: parm_breakpoint_control_register64_t;
+  bvr: pqword;
+  {$endif}
   ClearMask: dword; //mask used to whipe the original bits from DR7
   newprotect, oldprotect: dword;
   bw: ptruint;
@@ -780,8 +890,13 @@ end;
 begin
   //issue: If a breakpoint is being handled and this is called, dr6 gets reset to 0 in windows 7, making it impossible to figure out what caused the breakpoint
 
+  if breakpoint^.markedfordeletion then exit;
+
   if CurrentDebuggerInterface is TDBVMDebugInterface then
     breakpoint^.breakpointMethod:=bpmDBVMNative;
+
+  if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+    breakpoint^.breakpointMethod:=bpmGDB;
 
   AllThreadsAreSet:=true;
 
@@ -805,7 +920,6 @@ begin
     bpmDebugRegister:
     begin
       //Debug registers
-
       if CurrentDebuggerInterface is TNetworkDebuggerInterface then
       begin
         //network
@@ -826,159 +940,242 @@ begin
         exit;
       end;
 
-
-      Debugregistermask := 0;
-      outputdebugstring(PChar('1:Debugregistermask=' + inttohex(Debugregistermask, 8)));
-
-      case breakpoint.breakpointTrigger of
-        bptWrite: Debugregistermask := $1 or Debugregistermask;
-        bptAccess: Debugregistermask := $3 or Debugregistermask;
-      end;
-
-
-      case breakpoint.size of
-        2: Debugregistermask := $4 or Debugregistermask;
-        4: Debugregistermask := $c or Debugregistermask;
-        8: Debugregistermask := $8 or Debugregistermask; //10 is defined as 8 byte
-      end;
-
-
-      outputdebugstring(PChar('2:Debugregistermask=' + inttohex(Debugregistermask, 8)));
-
-      Debugregistermask := (Debugregistermask shl (16 + 4 * breakpoint.debugRegister));
-      //set the RWx amd LENx to the proper position
-      Debugregistermask := Debugregistermask or (1 shl (breakpoint.debugregister * 2));
-      //and set the Lx bit
-      Debugregistermask := Debugregistermask or (1 shl 10); //and set bit 10 to 1
-
-      clearmask := (($F shl (16 + 4 * breakpoint.debugRegister)) or (1 shl (breakpoint.debugregister * 2))) xor $FFFFFFFF;
-      //create a mask that can be used to undo the old settings
-
-      outputdebugstring(PChar('3:Debugregistermask=' + inttohex(Debugregistermask, 8)));
-      outputdebugstring(PChar('clearmask=' + inttohex(clearmask, 8)));
-
-      breakpoint^.active := True;
-
-      {$ifdef windows}
-      if (CurrentDebuggerInterface is TKernelDebugInterface) and globaldebug then
+      {$ifdef darwin}
+      if processhandler.SystemArchitecture=archArm then
       begin
-        //set the breakpoint using globaldebug
-        DBKDebug_GD_SetBreakpoint(true, breakpoint.debugregister, breakpoint.address, BreakPointTriggerToBreakType(breakpoint.breakpointTrigger), SizeToBreakLength(breakpoint.size));
-      end
-      else
-      {$endif}
-      begin
-        if (breakpoint.ThreadID <> 0) or (UpdateForOneThread<>nil) then
-        begin
-          //only one thread
-          if updateForOneThread=nil then
-            currentthread := getDebugThreadHanderFromThreadID(breakpoint.ThreadID)
-          else
-            currentthread:=updateForOneThread;
-
-          if currentthread = nil then //thread has been destroyed
-            exit;
-
-
-
-          currentthread.suspend;
-          currentthread.fillContext;
-
-          {$ifdef windows}
-          if CurrentDebuggerInterface is TWindowsDebuggerInterface then
+        debuggercs.enter;
+        breakpoint^.active := True;
+        try
+          for i := 0 to ThreadList.Count - 1 do
           begin
-            if (currentthread.context.Dr6<>0) and (word(currentthread.context.dr6)<>$0ff0) then
-            begin
-              //the breakpoint in this thread can not be touched yet. Leave it activated
-              //(touching the DR registers with setthreadcontext clears DR6 in win7 )
-              currentthread.needstocleanup:=true;
-              currentthread.resume;
-              //currentthread.needstosetbp:=true;
-              exit;
-            end;
-          end;
-          {$endif}
+            currentthread := threadlist.items[i];
 
-          if BPOverride or ((byte(currentthread.context.Dr7) and byte(Debugregistermask))=0) then
-          begin
-            case breakpoint.debugregister of
-              0: currentthread.context.Dr0 := breakpoint.address;
-              1: currentthread.context.Dr1 := breakpoint.address;
-              2: currentthread.context.Dr2 := breakpoint.address;
-              3: currentthread.context.Dr3 := breakpoint.address;
+            if (breakpoint^.ThreadID <> 0) and (currentthread.ThreadId<>breakpoint^.ThreadID) then continue;
+            if (UpdateForOneThread<>nil) and (currentthread<>UpdateForOneThread) then continue;
+
+            currentthread.suspend;
+            currentthread.fillContext;
+
+            //todo: check if the bp is in use
+
+            //todo2: move to seperate unit and do arm64_setbreakpoint(address, type, debugreg) and optionally return a different debugreg if inuse
+
+            case breakpoint.breakpointTrigger of
+              bptExecute: //bcr
+              begin
+
+                bcr:=@PARM64CONTEXT(currentthread.context)^.debugstate.bcr[breakpoint^.debugRegister];
+                bvr:=@PARM64CONTEXT(currentthread.context)^.debugstate.bvr[breakpoint^.debugRegister];
+
+                bvr^:=breakpoint^.address;
+                bcr^.bits.enabled:=1; // 0..1;    //0 - 0=off, 1=on
+                bcr^.bits.privilege_access_control:=2;  // 0..3; //2:1 - 0=User, system and supervisor. 1=privileged, 2=usermode, 3=any
+                bcr^.bits.reserved:=0; //0..3; //4:3
+                bcr^.bits.byte_address_select:=15;// //0..15; //8:5 - 0: iva mismatch, 15: iva match
+                bcr^.bits.reserved2:=0; //0..31;    //13:9 -  should be 0
+                bcr^.bits.secure_world_control:=0; //0..3; //15:14 - 0: Both secure and nonsecure (default, use this)  1: only nonsecure world, 2: only secure world, 3: reserved
+                bcr^.bits.linked_BRP_number:=0; //0..15; //19:16 - BRP index
+                bcr^.bits.BVR_Meaning:=0; //0..7; //22:20 - 0: unlinked, 1: linked, 2: unlinked contextid match, 3: linked contextid match 4: unlinked virtual address mismatch , 5:linked instruction virtual address mismatch
+                bcr^.bits.reserved3:=0; //0..7; //23 - reserved, sbz
+                bcr^.bits.address_mask:=0; //0..31; //28:24 - mask. 0=no mask, 1,2=reserded, 3=0x7, 4=0xf, 5=0x1f, ..., 31=0x7fffffff
+              end;
+
+              bptAccess, bptWrite:  //wcr
+              begin
+                wcr:=@PARM64CONTEXT(currentthread.context)^.debugstate.wcr[breakpoint^.debugRegister];
+                wvr:=@PARM64CONTEXT(currentthread.context)^.debugstate.wvr[breakpoint^.debugRegister];
+
+                wvr^:=breakpoint^.address;
+                wcr^.bits.enabled:=1;
+                wcr^.bits.privilege_access_control:=2;// 0..3; //2:1 - 0=reserved. 1=privileged, 2=usermode, 3=both (usually go for 2, can't even set the priv bit)
+
+                if breakpoint^.breakpointTrigger=bptAccess then   // 0..3; //4:3 - 0=reserved, 1=load, 2=store, 3=load and store
+                  wcr^.bits.loadstore_access_control:=3
+                else
+                  wcr^.bits.loadstore_access_control:=2;
+
+
+                case breakpoint.size of
+                  1: wcr^.bits.watchSize:=ARM_WATCHSIZE_1;
+                  2: wcr^.bits.watchSize:=ARM_WATCHSIZE_2;
+                  4: wcr^.bits.watchSize:=ARM_WATCHSIZE_4;
+                  8: wcr^.bits.watchSize:=ARM_WATCHSIZE_8;
+                  else
+                     wcr^.bits.watchSize:=ARM_WATCHSIZE_4;
+                end;
+                wcr^.bits.reserved:=0;// 0..1;    //13 -  should be 0
+                wcr^.bits.secure_world_control:=0;// 0..3; //15:14 - 0: Both secure and nonsecure (default, use this)  1: only nonsecure world, 2: only secure world, 3: reserved
+                wcr^.bits.linked_BRP_number:=0;// 0..15; //19:16 - BRP index
+                wcr^.bits.enable_BP_linking:=0;// 0..1; //20 - 0=no linking, 1=enable linking
+                wcr^.bits.reserved2:=0;// 0..7; //23:21 - reserved, sbz
+                wcr^.bits.address_mask:=0;// 0..31; //28:24 - mask. 0=no mask, 1,2=reserded, 3=0x7, 4=0xf, 5=0x1f, ..., 31=0x7fffffff
+              end;
             end;
-            currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE or (1 shl breakpoint.debugregister);
-            currentthread.context.Dr7 :=(currentthread.context.Dr7 and clearmask) or Debugregistermask;
+
             currentthread.setContext(cfDebug);
-          end
-          else
-            AllThreadsAreSet:=false;
+            currentthread.resume;
+
+          end;
+        finally
+          debuggercs.leave;
+        end;
+      end
+      else {$endif}
+      begin
+        Debugregistermask := 0;
+       // outputdebugstring(PChar('1:Debugregistermask=' + inttohex(Debugregistermask, 8)));
+
+        case breakpoint.breakpointTrigger of
+          bptWrite: Debugregistermask := $1 or Debugregistermask;
+          bptAccess: Debugregistermask := $3 or Debugregistermask;
+        end;
 
 
-          currentthread.resume;
+        case breakpoint.size of
+          2: Debugregistermask := $4 or Debugregistermask;
+          4: Debugregistermask := $c or Debugregistermask;
+          8: Debugregistermask := $8 or Debugregistermask; //10 is defined as 8 byte
+        end;
+
+
+        //outputdebugstring(PChar('2:Debugregistermask=' + inttohex(Debugregistermask, 8)));
+
+        Debugregistermask := (Debugregistermask shl (16 + 4 * breakpoint.debugRegister));
+        //set the RWx amd LENx to the proper position
+        Debugregistermask := Debugregistermask or (1 shl (breakpoint.debugregister * 2));
+        //and set the Lx bit
+        Debugregistermask := Debugregistermask or (1 shl 10); //and set bit 10 to 1
+
+        clearmask := (($F shl (16 + 4 * breakpoint.debugRegister)) or (1 shl (breakpoint.debugregister * 2))) xor $FFFFFFFF;
+        //create a mask that can be used to undo the old settings
+
+       // outputdebugstring(PChar('3:Debugregistermask=' + inttohex(Debugregistermask, 8)));
+       // outputdebugstring(PChar('clearmask=' + inttohex(clearmask, 8)));
+
+        breakpoint^.active := True;
+
+        {$ifdef windows}
+        if (CurrentDebuggerInterface is TKernelDebugInterface) and globaldebug then
+        begin
+          //set the breakpoint using globaldebug
+          DBKDebug_GD_SetBreakpoint(true, breakpoint.debugregister, breakpoint.address, BreakPointTriggerToBreakType(breakpoint.breakpointTrigger), SizeToBreakLength(breakpoint.size));
         end
         else
+        {$endif}
         begin
-          //update all threads with the new debug register data
+          if (breakpoint.ThreadID <> 0) or (UpdateForOneThread<>nil) then
+          begin
+            //only one thread
+            if updateForOneThread=nil then
+              currentthread := getDebugThreadHanderFromThreadID(breakpoint.ThreadID)
+            else
+              currentthread:=updateForOneThread;
 
-          debuggercs.enter;
-          try
-            for i := 0 to ThreadList.Count - 1 do
+            if currentthread = nil then //thread has been destroyed
+              exit;
+
+
+
+            currentthread.suspend;
+            currentthread.fillContext;
+
+            {$ifdef windows}
+            if CurrentDebuggerInterface is TWindowsDebuggerInterface then
             begin
-              currentthread := threadlist.items[i];
-              currentthread.suspend;
-              currentthread.fillContext;
-
-              {$ifdef windows}
-              if CurrentDebuggerInterface is TWindowsDebuggerInterface then
+              if (currentthread.context.Dr6<>0) and (word(currentthread.context.dr6)<>$0ff0) then
               begin
-                if (currentthread.context.Dr6<>0) and (word(currentthread.context.dr6)<>$0ff0) then
-                begin
-                  //the breakpoint in this thread can not be touched yet. Leave it activated
-                  currentthread.needstocleanup:=true;
-                  currentthread.resume;
-  //                currentthread.needstosetbp:=true;
-                  continue;
-
-                end;
+                //the breakpoint in this thread can not be touched yet. Leave it activated
+                //(touching the DR registers with setthreadcontext clears DR6 in win7 )
+                currentthread.needstocleanup:=true;
+                currentthread.resume;
+                //currentthread.needstosetbp:=true;
+                exit;
               end;
-              {$endif}
+            end;
+            {$endif}
+
+            if BPOverride or ((byte(currentthread.context.Dr7) and byte(Debugregistermask))=0) then
+            begin
+              case breakpoint.debugregister of
+                0: currentthread.context.Dr0 := breakpoint.address;
+                1: currentthread.context.Dr1 := breakpoint.address;
+                2: currentthread.context.Dr2 := breakpoint.address;
+                3: currentthread.context.Dr3 := breakpoint.address;
+              end;
+              currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE or (1 shl breakpoint.debugregister);
+              currentthread.context.Dr7 :=(currentthread.context.Dr7 and clearmask) or Debugregistermask;
+              currentthread.setContext(cfDebug);
+            end
+            else
+              AllThreadsAreSet:=false;
 
 
-              if BPOverride or ((byte(currentthread.context.Dr7) and byte(Debugregistermask))=0) then
+            currentthread.resume;
+          end
+          else
+          begin
+            //update all threads with the new debug register data
+
+            debuggercs.enter;
+            try
+              for i := 0 to ThreadList.Count - 1 do
               begin
-                //make sure this bp spot bp is not used
-                case breakpoint.debugregister of
-                  0: currentthread.context.Dr0 := breakpoint.address;
-                  1: currentthread.context.Dr1 := breakpoint.address;
-                  2: currentthread.context.Dr2 := breakpoint.address;
-                  3: currentthread.context.Dr3 := breakpoint.address;
-                end;
-
-                currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE or (1 shl breakpoint.debugregister);
-                newdr7:= (currentthread.context.Dr7 and clearmask) or Debugregistermask;     ;
-                currentthread.context.Dr7 := newdr7;
-                currentthread.setContext(cfDebug);
+                currentthread := threadlist.items[i];
+                currentthread.suspend;
                 currentthread.fillContext;
-                if currentthread.context.Dr7<>newdr7 then
+
+                {$ifdef windows}
+                if CurrentDebuggerInterface is TWindowsDebuggerInterface then
                 begin
-                  asm
-                  nop
+                  if (currentthread.context.Dr6<>0) and (word(currentthread.context.dr6)<>$0ff0) then
+                  begin
+                    //the breakpoint in this thread can not be touched yet. Leave it activated
+                    currentthread.needstocleanup:=true;
+                    currentthread.resume;
+    //                currentthread.needstosetbp:=true;
+                    continue;
+
                   end;
                 end;
-              end
-              else
-                AllThreadsAreSet:=false;
+                {$endif}
 
-              currentthread.resume;
+
+                if BPOverride or ((byte(currentthread.context.Dr7) and byte(Debugregistermask))=0) then
+                begin
+                  //make sure this bp spot bp is not used
+                  case breakpoint.debugregister of
+                    0: currentthread.context.Dr0 := breakpoint.address;
+                    1: currentthread.context.Dr1 := breakpoint.address;
+                    2: currentthread.context.Dr2 := breakpoint.address;
+                    3: currentthread.context.Dr3 := breakpoint.address;
+                  end;
+
+                  currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE or (1 shl breakpoint.debugregister);
+                  newdr7:= (currentthread.context.Dr7 and clearmask) or Debugregistermask;     ;
+
+                  currentthread.context.Dr7 := newdr7;
+                  currentthread.setContext(cfDebug);
+                  currentthread.fillContext;
+                  if currentthread.context.Dr7<>newdr7 then
+                  begin
+                    asm
+                    nop
+                    end;
+                  end;
+                end
+                else
+                  AllThreadsAreSet:=false;
+
+                currentthread.resume;
+              end;
+
+            finally
+              debuggercs.leave;
             end;
 
-          finally
-            debuggercs.leave;
           end;
 
         end;
-
       end;
     end;
 
@@ -1034,12 +1231,12 @@ begin
       if GetPhysicalAddress(processhandle,pointer(breakpoint^.address),pa) then
       begin
         case breakpoint^.breakpointTrigger of
-          bptExecute: breakpoint^.dbvmwatchid:=dbvm_watch_executes(PA,1,EPTO_INTERRUPT,0);
-          bptAccess: breakpoint^.dbvmwatchid:=dbvm_watch_reads(PA,1,EPTO_INTERRUPT,0);
-          bptWrite: breakpoint^.dbvmwatchid:=dbvm_watch_writes(PA,1,EPTO_INTERRUPT,0);
+          bptExecute: breakpoint^.debuggerinterfacewatchid:=dbvm_watch_executes(PA,1,EPTO_INTERRUPT,0);
+          bptAccess: breakpoint^.debuggerinterfacewatchid:=dbvm_watch_reads(PA,1,EPTO_INTERRUPT,0);
+          bptWrite: breakpoint^.debuggerinterfacewatchid:=dbvm_watch_writes(PA,1,EPTO_INTERRUPT,0);
         end;
 
-        if breakpoint^.dbvmwatchid=-1 then
+        if breakpoint^.debuggerinterfacewatchid=-1 then
           raise exception.create('Failure setting a memory watch')
         else
           breakpoint^.active:=true;
@@ -1062,10 +1259,10 @@ begin
         //trigger COW before placing the bp
         if ReadProcessMemory(processhandle, pointer(breakpoint^.address), @old,1,bw) then
         begin
-          vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle, pointer(breakpoint.address), 1, PAGE_EXECUTE_READWRITE, oldprotect);
-          WriteProcessMemoryActual(processhandle, pointer(breakpoint.address), @old, 1, bw); //skip the DBVM version and use the native kernelmode/winapi one
+          vpe:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle, pointer(breakpoint^.address), 1, PAGE_EXECUTE_READWRITE, oldprotect);
+          WriteProcessMemoryActual(processhandle, pointer(breakpoint^.address), @old, 1, bw); //skip the DBVM version and use the native kernelmode/winapi one
           if vpe then
-            VirtualProtectEx(processhandle, pointer(breakpoint.address), 1, oldprotect, oldprotect);
+            VirtualProtectEx(processhandle, pointer(breakpoint^.address), 1, oldprotect, oldprotect);
         end;
       end;
 
@@ -1074,12 +1271,12 @@ begin
         DBVMWatchBPActive:=true;
 
         case breakpoint^.breakpointTrigger of
-          bptExecute:breakpoint^.dbvmwatchid:=dbvm_watch_executes(PA,breakpoint^.size,EPTO_DBVMBP,0, TDBVMDebugInterface(currentdebuggerinterface).usermodeloopint3, TDBVMDebugInterface(currentdebuggerinterface).kernelmodeloopint3);
-          bptAccess: breakpoint^.dbvmwatchid:=dbvm_watch_reads(PA,breakpoint^.size,EPTO_DBVMBP,0, TDBVMDebugInterface(currentdebuggerinterface).usermodeloopint3, TDBVMDebugInterface(currentdebuggerinterface).kernelmodeloopint3);
-          bptWrite: breakpoint^.dbvmwatchid:=dbvm_watch_writes(PA,breakpoint^.size,EPTO_DBVMBP,0, TDBVMDebugInterface(currentdebuggerinterface).usermodeloopint3, TDBVMDebugInterface(currentdebuggerinterface).kernelmodeloopint3);
+          bptExecute:breakpoint^.debuggerinterfacewatchid:=dbvm_watch_executes(PA,breakpoint^.size,EPTO_DBVMBP,0, TDBVMDebugInterface(currentdebuggerinterface).usermodeloopint3, TDBVMDebugInterface(currentdebuggerinterface).kernelmodeloopint3);
+          bptAccess: breakpoint^.debuggerinterfacewatchid:=dbvm_watch_reads(PA,breakpoint^.size,EPTO_DBVMBP,0, TDBVMDebugInterface(currentdebuggerinterface).usermodeloopint3, TDBVMDebugInterface(currentdebuggerinterface).kernelmodeloopint3);
+          bptWrite: breakpoint^.debuggerinterfacewatchid:=dbvm_watch_writes(PA,breakpoint^.size,EPTO_DBVMBP,0, TDBVMDebugInterface(currentdebuggerinterface).usermodeloopint3, TDBVMDebugInterface(currentdebuggerinterface).kernelmodeloopint3);
         end;
 
-        if breakpoint^.dbvmwatchid=-1 then
+        if breakpoint^.debuggerinterfacewatchid=-1 then
           raise exception.create('Failure setting a memory watch')
         else
           breakpoint^.active:=true;
@@ -1087,6 +1284,21 @@ begin
       else
         raise exception.create(format('Failure obtaining physical address for %8x',[breakpoint^.address]));
       {$endif}
+    end;
+
+    bpmGDB:
+    begin
+      Log('Setting GDB Breakpoint');
+      if not (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then raise exception.create('Only the GDB server debugger can set GDB breakpoints');
+
+      case breakpoint^.breakpointTrigger of
+        bptExecute:breakpoint^.debuggerinterfacewatchid:=TGDBServerDebuggerInterface(CurrentDebuggerInterface).setExecuteBP(breakpoint^.address, 0);
+        bptAccess: breakpoint^.debuggerinterfacewatchid:=TGDBServerDebuggerInterface(CurrentDebuggerInterface).setAccessBP(breakpoint^.address, breakpoint^.size);
+        bptWrite:  breakpoint^.debuggerinterfacewatchid:=TGDBServerDebuggerInterface(CurrentDebuggerInterface).setWriteBP(breakpoint^.address, breakpoint^.size);
+      end;
+
+      if breakpoint^.debuggerinterfacewatchid<>-1 then
+        breakpoint^.active:=true;
     end;
   end;
 
@@ -1123,6 +1335,8 @@ begin
 
       exit;
     end;
+
+
 
 
 
@@ -1179,20 +1393,35 @@ begin
         end;
         {$endif}
 
-        //check if this breakpoint was set in this thread
-        if (BPOverride) or ((currentthread.DebugRegistersUsedByCE and (1 shl breakpoint.debugregister))>0) then
+        {$ifdef darwin}
+        if (processhandler.SystemArchitecture=archArm) then
         begin
-          currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE and (not (1 shl breakpoint.debugregister));
-
-          case breakpoint.debugregister of
-            0: currentthread.context.Dr0 := 0;
-            1: currentthread.context.Dr1 := 0;
-            2: currentthread.context.Dr2 := 0;
-            3: currentthread.context.Dr3 := 0;
+          if processhandler.is64Bit then
+          begin
+            case breakpoint.breakpointTrigger of
+              bptExecute: PARM64CONTEXT(currentthread.context)^.debugstate.bcr[breakpoint^.debugRegister].bits.enabled:=0;
+              bptAccess, bptWrite: PARM64CONTEXT(currentthread.context)^.debugstate.wcr[breakpoint^.debugRegister].bits.enabled:=0;
+            end;
           end;
-          currentthread.context.Dr7 := (currentthread.context.Dr7 and Debugregistermask);
           currentthread.setContext(cfDebug);
+        end
+        else
+        {$endif}
+        begin
+          //check if this breakpoint was set in this thread
+          if (BPOverride) or ((currentthread.DebugRegistersUsedByCE and (1 shl breakpoint.debugregister))>0) then
+          begin
+            currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE and (not (1 shl breakpoint.debugregister));
 
+            case breakpoint.debugregister of
+              0: currentthread.context.Dr0 := 0;
+              1: currentthread.context.Dr1 := 0;
+              2: currentthread.context.Dr2 := 0;
+              3: currentthread.context.Dr3 := 0;
+            end;
+            currentthread.context.Dr7 := (currentthread.context.Dr7 and Debugregistermask);
+            currentthread.setContext(cfDebug);
+          end;
         end;
         currentthread.resume;
       end
@@ -1221,50 +1450,68 @@ begin
             end;
             {$endif}
 
-
-            hasoldbp:=false; //now check if this thread actually has the breakpoint set (and not replaced or never even set)
-
-            if (BPOverride) or ((currentthread.DebugRegistersUsedByCE and (1 shl breakpoint.debugregister))>0) then
+            {$ifdef darwin}
+            if (processhandler.SystemArchitecture=archArm) then
             begin
-              currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE and (not (1 shl breakpoint.debugregister));
-
-              case breakpoint.debugregister of
-                0:
-                begin
-                  hasoldbp:=currentthread.context.Dr0=breakpoint.address;
-                  if hasoldbp then
-                    currentthread.context.Dr0 := 0;
-                end;
-
-                1:
-                begin
-                  hasoldbp:=currentthread.context.Dr1=breakpoint.address;
-                  if hasoldbp then
-                    currentthread.context.Dr1 := 0;
-                end;
-
-                2:
-                begin
-                  hasoldbp:=currentthread.context.Dr2=breakpoint.address;
-                  if hasoldbp then
-                    currentthread.context.Dr2 := 0;
-                end;
-
-                3:
-                begin
-                  hasoldbp:=currentthread.context.Dr3=breakpoint.address;
-                  if hasoldbp then
-                    currentthread.context.Dr3 := 0;
-                end;
-              end;
-
-              if hasoldbp then
+              if processhandler.is64Bit then
               begin
-                currentthread.context.Dr7 := (currentthread.context.Dr7 and Debugregistermask);
-                currentthread.setcontext(cfDebug);
+                case breakpoint.breakpointTrigger of
+                  bptExecute: PARM64CONTEXT(currentthread.context)^.debugstate.bcr[breakpoint^.debugRegister].bits.enabled:=0;
+                  bptAccess, bptWrite: PARM64CONTEXT(currentthread.context)^.debugstate.wcr[breakpoint^.debugRegister].bits.enabled:=0;
+                end;
               end;
+              currentthread.setContext(cfDebug);
+            end;
+
+            {$endif}
 
 
+            if processhandler.SystemArchitecture=archX86 then
+            begin
+              hasoldbp:=false; //now check if this thread actually has the breakpoint set (and not replaced or never even set)
+
+              if (BPOverride) or ((currentthread.DebugRegistersUsedByCE and (1 shl breakpoint.debugregister))>0) then
+              begin
+                currentthread.DebugRegistersUsedByCE:=currentthread.DebugRegistersUsedByCE and (not (1 shl breakpoint.debugregister));
+
+                case breakpoint.debugregister of
+                  0:
+                  begin
+                    hasoldbp:=currentthread.context.Dr0=breakpoint.address;
+                    if hasoldbp then
+                      currentthread.context.Dr0 := 0;
+                  end;
+
+                  1:
+                  begin
+                    hasoldbp:=currentthread.context.Dr1=breakpoint.address;
+                    if hasoldbp then
+                      currentthread.context.Dr1 := 0;
+                  end;
+
+                  2:
+                  begin
+                    hasoldbp:=currentthread.context.Dr2=breakpoint.address;
+                    if hasoldbp then
+                      currentthread.context.Dr2 := 0;
+                  end;
+
+                  3:
+                  begin
+                    hasoldbp:=currentthread.context.Dr3=breakpoint.address;
+                    if hasoldbp then
+                      currentthread.context.Dr3 := 0;
+                  end;
+                end;
+
+                if hasoldbp then
+                begin
+                  currentthread.context.Dr7 := (currentthread.context.Dr7 and Debugregistermask);
+                  currentthread.setcontext(cfDebug);
+                end;
+
+
+              end;
             end;
             currentthread.resume;
           end;
@@ -1317,7 +1564,10 @@ begin
   end
   else
   if (breakpoint^.breakpointMethod=bpmDBVM) or (breakpoint^.breakpointMethod=bpmDBVMNative) then
-    dbvm_watch_delete(breakpoint^.dbvmwatchid);
+    dbvm_watch_delete(breakpoint^.debuggerinterfacewatchid)
+  else
+  if breakpoint^.breakpointMethod=bpmGDB then
+    TGDBServerDebuggerInterface(CurrentDebuggerInterface).deleteBreakpoint(breakpoint^.debuggerinterfacewatchid);
 
   breakpoint^.active := false;
 
@@ -1331,8 +1581,8 @@ var
 begin
   debuggercs.enter;
   try
-    outputdebugstring('RemoveBreakpoint');
-    outputdebugstring(PChar('breakpointlist.Count=' + IntToStr(breakpointlist.Count)));
+   // outputdebugstring('RemoveBreakpoint');
+  //  outputdebugstring(PChar('breakpointlist.Count=' + IntToStr(breakpointlist.Count)));
 
     while breakpoint.owner <> nil do //it's a child, but we need the owner
       breakpoint := breakpoint.owner;
@@ -1350,6 +1600,9 @@ begin
         bp^.markedfordeletion := True; //set this flag so it gets deleted on next no-event
         bp^.deletetickcount:=GetTickCount;
 
+        bp^.FoundcodeDialog:=nil;
+        bp^.frmTracer:=nil;
+        bp^.frmchangedaddresses:=nil;
 
       end
     end;
@@ -1379,7 +1632,7 @@ begin
 
 
 
-    OutputDebugString('Disabled the breakpoint');
+ //   OutputDebugString('Disabled the breakpoint');
   finally
     debuggercs.leave;
   end;
@@ -1388,7 +1641,7 @@ begin
     queue(tthread.CurrentThread, frmBreakpointlist.updatebplist);
 end;
 
-function TDebuggerThread.AddBreakpoint(owner: PBreakpoint; address: uint_ptr; size: integer; bpt: TBreakpointTrigger; bpm: TBreakpointMethod; bpa: TBreakpointAction; debugregister: integer=-1; foundcodedialog: Tfoundcodedialog=nil; threadID: dword=0; frmchangedaddresses: Tfrmchangedaddresses=nil; FrmTracer: TFrmTracer=nil; tcount: integer=0; changereg: pregistermodificationBP=nil; OnBreakpoint: TBreakpointEvent=nil): PBreakpoint;
+function TDebuggerThread.AddBreakpoint(owner: PBreakpoint; address: uint_ptr; size: integer; bpt: TBreakpointTrigger; bpm: TBreakpointMethod; bpa: TBreakpointAction; debugregister: integer=-1; foundcodedialog: Tfoundcodedialog=nil; threadID: dword=0; frmchangedaddresses: Tfrmchangedaddresses=nil; FrmTracer: TFrmTracer=nil; tcount: integer=0; changereg: pointer=nil; OnBreakpoint: TBreakpointEvent=nil): PBreakpoint;
 var
   newbp: PBreakpoint;
   originalbyte: byte;
@@ -1396,27 +1649,29 @@ var
   i: integer;
   count: integer;
 begin
+  originalbyte:=0;
   if CurrentDebuggerInterface is TDBVMDebugInterface then
     bpm:=bpmDBVMNative;
 
+  if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+    bpm:=bpmGDB;
 
-  if bpm=bpmInt3 then
+  if (bpm in [bpmInt3,bpmGDB]) and (bpt=bptExecute) then
   begin
     if dbcSoftwareBreakpoint in CurrentDebuggerInterface.DebuggerCapabilities then
     begin
-      if not ReadProcessMemory(processhandle, pointer(address), @originalbyte,
-        1, x) then raise exception.create(rsUnreadableAddress);
-    end else raise exception.create(Format(
-      rsDebuggerInterfaceDoesNotSupportSoftwareBreakpoints, [
-      CurrentDebuggerInterface.name]));
+      if not ReadProcessMemory(processhandle, pointer(address), @originalbyte, 1, x) then
+        raise exception.create(rsUnreadableAddress);
+    end
+    else
+      raise exception.create(Format(rsDebuggerInterfaceDoesNotSupportSoftwareBreakpoints, [CurrentDebuggerInterface.name]));
 
   end
   else
   if bpm=bpmDebugRegister then
   begin
 
-    if (debugregister<0) or (debugregister>=GetMaxBreakpointCountForThisType(bpt)) then raise exception.create(
-      rsAddBreakpointAnInvalidDebugRegisterIsUsed);
+    if (debugregister<0) or (debugregister>=GetMaxBreakpointCountForThisType(bpt)) then raise exception.create(rsAddBreakpointAnInvalidDebugRegisterIsUsed);
   end
   else
   if bpm=bpmDBVM then
@@ -1449,7 +1704,21 @@ begin
   newbp^.tracecount:=tcount;
   newbp^.OnBreakpoint:=OnBreakpoint;
   if changereg<>nil then
-    newbp^.changereg:=changereg^;
+  begin
+    if bpa=bo_ChangeRegister then
+      newbp^.changereg:=pregistermodificationBP(changereg)^
+    else
+    begin
+      //copy the proved contexts to the breakpoint . caller can free it's copy
+      i:=getBestContextHandler.ContextSize;
+      newbp^.changeregEx.context:=getmem(i);
+      newbp^.changeregEx.mask:=getmem(i);
+
+      copymemory(newbp^.changeregEx.mask, PRegisterModificationBPEx(changereg)^.mask,i);
+      copymemory(newbp^.changeregEx.context, PRegisterModificationBPEx(changereg)^.context,i);
+    end;
+
+  end;
 
 
   debuggercs.enter;
@@ -1695,21 +1964,21 @@ begin
   if CurrentDebuggerInterface is TDBVMDebugInterface then
     breakpointmethod:=bpmDBVMNative;  //memory watch bp's all the way
 
-
+  if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+    breakpointmethod:=bpmGDB;
 
   if breakpointmethod=bpmint3 then //not possible for this
     breakpointmethod:=bpmDebugRegister;
 
   //split up address and size into memory alligned sections
-
-
-  setlength(bplist, 0);
+  bplist:=[];
   usedDebugRegister:=-1;
   if breakpointmethod=bpmDebugRegister then
   begin
     GetBreakpointList(address, size, bplist);
 
     usedDebugRegister := GetUsableDebugRegister(bpt);
+    outputdebugstring('picked debug register '+usedDebugRegister.ToString);
     if usedDebugRegister = -1 then
       raise Exception.Create(
         rsAll4DebugRegistersAreCurrentlyUsedUpFreeOneAndTryA);
@@ -1725,6 +1994,7 @@ begin
     bptAccess : foundcodedialog.Caption:=Format(rsTheFollowingOpcodesAccessed, [inttohex(address, 8)]);
     bptWrite : foundcodedialog.Caption:=Format(rsTheFollowingOpcodesWriteTo, [inttohex(address, 8)]);
   end;
+
   foundcodedialog.addresswatched:=address;
   foundcodedialog.Show;
 
@@ -1734,7 +2004,6 @@ begin
 
   foundcodedialog.breakpoint:=newbp;
   inc(newbp.referencecount);
-
 
   if length(bplist) > 1 then
   begin
@@ -1791,6 +2060,144 @@ begin
   //it doesn't really matter if it returns false, that would just mean the breakpoint got and it's tracing or has finished tracing
 end;
 
+{$ifdef windows}
+function TDebuggerThread.initIntelPTTracing: boolean;
+var
+  options: IPT_OPTIONS;
+  size: dword;
+  sizeadjust: integer;
+begin
+  result:=false;
+  if hideiptcapability then exit;
+
+  if useintelptfordebug then
+  begin
+    if requiresAdmin('IPT Trace')=false then exit;
+
+    if ce_getProcessIDFromProcessName('vmware-vmx.exe')<>0 then
+    begin
+      launchanyhow:=false;
+      if MainThreadID=GetCurrentThreadId then
+        vmwareRunningAskLaunch
+      else
+        synchronize(vmwareRunningAskLaunch);
+
+      if not launchanyhow then exit;
+    end;
+
+    sizeadjust:=0;
+
+    options.AsUlongLong:=0;
+    options.flags.OptionVersion:=1;
+
+    repeat
+      StopProcessIptTracing(processhandle);
+      options.flags.TopaPagesPow2:=maxiptconfigsize-sizeadjust;
+      if StartProcessIptTracing(processhandle, options) then
+      begin
+        if GetProcessIptTraceSize(processhandle, size) then
+        begin
+          usesipt:=true;
+          exit(true);
+        end;
+
+        inc(sizeadjust);
+
+      end
+      else exit(false); //failure activating
+    until (sizeadjust>maxiptconfigsize);
+  end;
+end;
+
+procedure TDebuggerThread.stopIntelPTTracing;
+begin
+  StopProcessIptTracing(processhandle);
+end;
+
+
+function TDebuggerThread.getLastIPT(var log: pointer; var size: integer): boolean;
+//get a direct pointer to the debuggerthread's current log. (fetches the log if it hasn't done so yet)
+
+var
+  tracesize: dword;
+  h: PIPT_TRACE_HEADER;
+  last: qword;
+  i: integer;
+  loopcount: integer;
+begin
+  result:=false;
+
+  if usesipt=false then exit;
+
+  if fcurrentThread<>nil then
+  begin
+    if not fetchediptlog then
+    begin
+      loopcount:=0;
+      while not fetchediptlog do
+      begin
+        if GetProcessIptTraceSize(processhandle, tracesize)=false then
+        begin
+          initIntelPTTracing; //reinit. It may get a smaller size. perhaps next time more luck
+          exit;
+        end;
+
+
+        if (fulliptlog=nil) or (tracesize>fulliptlogsize) then
+        begin
+          if (fulliptlog<>nil) then
+            FreeMemAndNil(fulliptlog);
+
+          getmem(fulliptlog, tracesize);
+          if fulliptlog=nil then exit;
+
+          fulliptlogsize:=tracesize;
+        end;
+
+        fetchediptlog:=GetProcessIptTrace(processhandle, fulliptlog, tracesize);
+
+        if not fetchediptlog then
+        begin
+          inc(loopcount);
+          if loopcount>10 then exit; //fuck it, something is broken
+        end;
+      end;
+    end;
+
+    //parse the log for this thread
+    h:=@fulliptlog^.TraceData[0];
+    last:=ptruint(@fulliptlog^.TraceData[0])+fulliptlog^.TraceSize;
+
+    while ptruint(h)<last do
+    begin
+      if h^.ThreadId=fcurrentthread.ThreadId then
+      begin
+        if (log=nil) or (memsize(log)<h^.tracesize) then
+        begin
+          if log<>nil then
+            freemem(log);
+
+          getmem(log, h^.TraceSize);
+        end;
+
+        size:=h^.tracesize;
+        copymemory(log, @h^.Trace[h^.RingBufferOffset], size-h^.RingBufferOffset);
+        copymemory(log+(size-h^.RingBufferOffset), @h^.Trace[0], h^.RingBufferOffset);
+        exit(True);
+      end;
+
+      if h^.tracesize=0 then break;
+      h:=PIPT_TRACE_HEADER(ptruint(@h^.Trace[0])+h^.tracesize);
+    end;
+
+  end
+  else
+    exit;
+
+end;
+
+ {$endif}
+
 procedure TDebuggerThread.startBranchMapper(tidlist: TList=nil);
 var
   i,j: integer;
@@ -1828,6 +2235,7 @@ begin
   for i:=0 to ThreadList.count-1 do
     TDebugThreadHandler(threadlist[i]).StopBranchMap;
 end;
+
 
 function TDebuggerThread.CodeFinderStop(codefinder: TFoundCodeDialog): boolean;
 var
@@ -1885,6 +2293,46 @@ begin
   end;
 end;
 
+function TDebuggerthread.setChangeRegBreakpointEx(regmod: PRegisterModificationBPEx): PBreakpoint;
+var
+  method: TBreakpointMethod;
+  useddebugregister: integer;
+  address: ptruint;
+  bp: pbreakpoint;
+begin
+  result:=nil;
+
+  address:=regmod^.address;
+  bp:=isBreakpoint(address);
+
+  if bp<>nil then
+    RemoveBreakpoint(bp);
+
+
+  if CurrentDebuggerInterface is TDBVMDebugInterface then
+    method:=bpmDBVMNative
+  else
+    method:=preferedBreakpointMethod;
+
+  usedDebugRegister:=-1;
+  if method=bpmDebugRegister then
+  begin
+    usedDebugRegister := GetUsableDebugRegister(bptExecute);
+    if usedDebugRegister = -1 then
+    begin
+      if MessageDlg(
+        rsAllDebugRegistersAreUsedUpDoYouWantToUseASoftwareBP, mtConfirmation, [
+          mbNo, mbYes], 0) = mrYes then
+        method := bpmInt3
+      else
+        exit;
+
+    end;
+  end;
+
+  result:=AddBreakpoint(nil, regmod.address, 1, bptExecute, method, bo_ChangeRegisterEx, usedDebugRegister, nil, 0, nil,nil,0, regmod);
+end;
+
 function TDebuggerthread.setChangeRegBreakpoint(regmod: PRegisterModificationBP): PBreakpoint;
 var
   method: TBreakpointMethod;
@@ -1922,22 +2370,26 @@ begin
     end;
   end;
 
-  //todo: Make this breakpoint show up in the memory view
   result:=AddBreakpoint(nil, regmod.address, 1, bptExecute, method, bo_ChangeRegister, usedDebugRegister, nil, 0, nil,nil,0, regmod);
-
-
 end;
 
-procedure TDebuggerthread.setBreakAndTraceBreakpoint(frmTracer: TFrmTracer; address: ptrUint; BreakpointTrigger: TBreakpointTrigger; breakpointmethod: TBreakpointmethod; bpsize: integer; count: integer; startcondition:string=''; stopcondition:string=''; stepover: boolean=false; nosystem: boolean=false);
+procedure TDebuggerthread.setBreakAndTraceBreakpoint(frmTracer: TFrmTracer; address: ptrUint; BreakpointTrigger: TBreakpointTrigger; breakpointmethod: TBreakpointmethod; bpsize: integer; count: integer; startcondition:string=''; stopcondition:string=''; stepover: boolean=false; stepoverrep: boolean=false; nosystem: boolean=false; stayInsideModule: boolean=false);
 var
   useddebugregister: integer;
   bp,bpsecondary: PBreakpoint;
   bplist: TBreakpointSplitArray;
   i: integer;
+
+  mi: tmoduleinfo;
+  startModuleBase: ptruint;
+  startModuleSize: dword;
 begin
   debuggercs.enter;
   try
     setlength(bplist,0);
+
+    if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+      breakpointmethod:=bpmGDB;
 
     if breakpointmethod=bpmDebugRegister then
     begin
@@ -1976,6 +2428,17 @@ begin
       {$endif}
     end;
 
+    if stayInsideModule then
+    begin
+      if symhandler.getmodulebyaddress(address, mi) then
+      begin
+        startModuleBase:=mi.baseaddress;
+        startModuleSize:=mi.basesize;
+      end
+      else
+        stayInsideModule:=false;
+    end;
+
     bp:=AddBreakpoint(nil, address, bpsize, BreakpointTrigger, breakpointmethod, bo_BreakAndTrace, usedDebugRegister,  nil, 0, nil,frmTracer,count);
 
     if startcondition<>'' then
@@ -1996,7 +2459,14 @@ begin
     begin
       bp^.traceendcondition:=strnew(pchar(stopcondition));
       bp^.traceStepOver:=stepover;
+      bp^.traceStepOverRep:=stepoverrep;
       bp^.traceNosystem:=nosystem;
+      bp^.traceStayInsideModule:=stayInsideModule;
+      if stayInsideModule then
+      begin
+        bp^.traceStartmodulebase:=startModuleBase;
+        bp^.traceStartmodulesize:=startModuleSize;
+      end;
     end;
 
 
@@ -2009,6 +2479,12 @@ begin
       bpsecondary.traceendcondition:=strnew(pchar(stopcondition));
       bpsecondary.traceStepOver:=stepover;
       bpsecondary.traceNosystem:=nosystem;
+      bpsecondary.traceStayInsideModule:=stayInsideModule;
+      if stayInsideModule then
+      begin
+        bpsecondary.traceStartmodulebase:=startModuleBase;
+        bpsecondary.traceStartmodulesize:=startModuleSize;
+      end;
     end;
 
 
@@ -2036,6 +2512,9 @@ begin
   if CurrentDebuggerInterface is TDBVMDebugInterface then
     method:=bpmDBVMNative;
 
+  if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+    method:=bpmGDB;
+
   usedDebugRegister:=-1;
   if method=bpmDebugRegister then
   begin
@@ -2048,7 +2527,6 @@ begin
         method := bpmInt3
       else
         exit;
-
     end;
   end;
 
@@ -2074,7 +2552,8 @@ begin
   end;
 
 
-  if uppercase(defaultDisassembler.LastDisassembleData.opcode)='RET' then
+
+  if (processhandler.SystemArchitecture=archX86) and (uppercase(defaultDisassembler.LastDisassembleData.opcode)='RET') then
   begin
     if processhandler.is64Bit then
       s:='[RSP]'
@@ -2089,13 +2568,27 @@ begin
     else
     begin
       //no [   ] part
-      if processhandler.is64Bit then
-        s:='RDI'
-      else
-        s:='EDI';
+      if processhandler.SystemArchitecture=archX86 then
+      begin
+        if processhandler.is64Bit then
+          s:='RDI'
+        else
+          s:='EDI';
+      end;
     end;
   end;
 
+  if processhandler.SystemArchitecture=archArm then
+  begin
+    //s is something like reg, #hexoffset  or reg, hexoffset or reg, reg
+    //strip the # and replace the , with a +
+    if pos('-',s)>0 then
+      s:=StringReplace(s,',','', [rfReplaceAll])
+    else
+      s:=StringReplace(s,',','+', [rfReplaceAll]);
+
+    s:=StringReplace(s,'#','', [rfReplaceAll]);
+  end;
 
   frmchangedaddresses.equation:=s; //so no need to disassemble every single time...
   frmchangedaddresses.FoundCodeDialog:=foundCodeDialog;
@@ -2424,6 +2917,9 @@ var
   usableDebugReg: integer;
   bplist: TBreakpointSplitArray;
 begin
+  if CurrentDebuggerInterface is TDBVMDebugInterface then
+    bpm:=bpmDBVMNative;
+
   found := False;
 
   result:=nil;
@@ -2454,7 +2950,6 @@ begin
       end;
     end
     else
-    if bpm=bpmException then
       result:=AddBreakpoint(nil, address, size, bptWrite, bpm, bo_Break, -1, nil,0,nil,nil,0,nil, OnBreakpoint);
 
 
@@ -2479,6 +2974,9 @@ var
   usableDebugReg: integer;
   bplist: TBreakpointSplitArray;
 begin
+  if CurrentDebuggerInterface is TDBVMDebugInterface then
+    bpm:=bpmDBVMNative;
+
   found := False;
 
   result:=nil;
@@ -2508,7 +3006,6 @@ begin
       end;
     end
     else
-    if bpm=bpmException then
       result:=AddBreakpoint(nil, address, size, bptAccess, bpm, bo_Break,-1,nil,0,nil,nil,0,nil,OnBreakpoint);
 
   finally
@@ -2535,6 +3032,9 @@ begin
   if CurrentDebuggerInterface is TDBVMDebugInterface then
     breakpointmethod:=bpmDBVMNative;
 
+  if CurrentDebuggerInterface is TGDBServerDebuggerInterface then
+    breakpointmethod:=bpmGDB;
+
   //find the breakpoint if it is already assigned and then remove it, else add the breakpoint
   found := False;
 
@@ -2545,7 +3045,7 @@ begin
     for i := 0 to BreakpointList.Count - 1 do
       if (PBreakpoint(BreakpointList[i])^.address = address) and
         (PBreakpoint(BreakpointList[i])^.breakpointTrigger = bptExecute) and
-        ((PBreakpoint(BreakpointList[i])^.breakpointAction = bo_break) or (PBreakpoint(BreakpointList[i])^.breakpointAction = bo_ChangeRegister) ) and
+        ((PBreakpoint(BreakpointList[i])^.breakpointAction = bo_break) or (PBreakpoint(BreakpointList[i])^.breakpointAction = bo_ChangeRegister) or (PBreakpoint(BreakpointList[i])^.breakpointAction = bo_ChangeRegisterEx)  ) and
         (PBreakpoint(BreakpointList[i])^.active) then
       begin
         found := True;
@@ -2711,8 +3211,8 @@ var
   i: integer;
   Result: TWaitResult;
   mresult: TModalResult;
-  starttime: dword;
-  currentloopstarttime: dword;
+  starttime: qword;
+  currentloopstarttime: qword;
   timeout: dword;
 
   userWantsToAttach: boolean;
@@ -2720,6 +3220,8 @@ var
   frmDebuggerAttachTimeout: TfrmDebuggerAttachTimeout;
 
   seconds: dword;
+
+  currenttime: qword;
 begin
 
 
@@ -2746,8 +3248,8 @@ begin
     while (gettickcount64-starttime)<=timeout do
     begin
 
-      currentloopstarttime:=GetTickCount;
-      while CheckSynchronize and ((GetTickCount-currentloopstarttime)<50) do
+      currentloopstarttime:=GetTickCount64;
+      while CheckSynchronize and ((GetTickCount64-currentloopstarttime)<50) do
       begin
         OutputDebugString('After CheckSynchronize');
         //synchronize for 50 milliseconds long
@@ -2759,6 +3261,14 @@ begin
       if result=wrSignaled then break;
     end;
 
+    currenttime:=GetTickCount64;
+
+    if (currenttime-starttime)<timeout then
+    asm
+    nop
+    end;
+
+
     if result<>wrSignaled then
     begin
       frmDebuggerAttachTimeout:=tfrmDebuggerAttachTimeout.Create(application);
@@ -2768,7 +3278,7 @@ begin
       frmDebuggerAttachTimeout.free;
 
       if mresult=mrAbort then
-        raise exception.create(rsDebuggerAttachAborted);
+        raise EDebuggerAttachException.create(rsDebuggerAttachAborted);
 
       if mresult=mrok then break;
 
@@ -2803,7 +3313,8 @@ begin
     beep;
   end;
 
-  OutputDebugString('WaitTillAttachedOrError exit');
+  OutputDebugString(format('WaitTillAttachedOrError exit. Took %.2f seconds', [(gettickcount64-starttime)/1000]) );
+
 
   {//wait just a little and wait for some threads
   sleep(100);
@@ -2819,6 +3330,7 @@ begin
 
   if terminated then
   begin
+    OutputDebugString('debuggerthread was terminated. Reason: '+CurrentDebuggerInterface.errorstring);
 
     if CurrentDebuggerInterface.errorstring='' then
       raise exception.create(rsDebuggerFailedToAttach)
@@ -2842,9 +3354,18 @@ end;
 procedure TDebuggerthread.sync_FreeGUIObject;
 begin
   GUIObjectToFree.Free;
+  GUIObjectToFree:=nil;
+end;
+
+procedure TDebuggerthread.vmwareRunningAskLaunch;
+begin
+  launchanyhow:=MessageDlg(rsVMWareIsRunningIPTBAD, mtWarning, [mbyes, mbno], 0)=mryes;
 end;
 
 procedure TDebuggerthread.defaultConstructorcode;
+//still executes inside the main thread
+var host:string;
+  port: word;
 begin
   debuggerCS := TGuiSafeCriticalSection.Create;
   OnAttachEvent := TEvent.Create(nil, True, False, '');
@@ -2865,6 +3386,7 @@ begin
       CurrentDebuggerInterface:=TNetworkDebuggerInterface.create
     else
     begin
+
       {$ifdef windows}
       if formsettings.cbUseWindowsDebugger.checked then
         CurrentDebuggerInterface:=TWindowsDebuggerInterface.create
@@ -2881,11 +3403,48 @@ begin
         TDBVMDebugInterface(CurrentDebuggerInterface).OnSteppingthreadLoss:=DBVMSteppingLost;
 
       end
+      else
       {$endif}
+      if formsettings.cbUseGDBServer.checked then
+      begin
+        //could already have been created earlier for the processlist
+        if (CurrentDebuggerInterface=nil) or (not (CurrentDebuggerInterface is TGDBServerDebuggerInterface)) then
+        begin
+          outputdebugstring('Using GDBServer debugger interface');
+          if formsettings.cbLaunchGDBServer.Checked then
+          begin
+            port:=strtoint(formsettings.edtGDBPort.Text);
+            CurrentDebuggerInterface:=TGDBServerDebuggerInterface.createAndConnect(formsettings.edtGDBServerCommand.Text, 'localhost', port);
+          end
+          else
+          begin
+            //spawn a dialog asking
+            if getGDBHostAndPort(host, port) then
+              CurrentDebuggerInterface:=TGDBServerDebuggerInterface.connectToExistingServer(host,port)
+            else
+              raise exception.create('Connect canceled');
 
+          end;
+        end;
+      end
       {$ifdef darwin}
-      outputdebugstring('Setting the CurrentDebuggerInterface to the MacException Debug interface');
-      CurrentDebuggerInterface:=TMacExceptionDebugInterface.create;
+      else
+      begin
+        if (formsettings.cbUseRosettaDebugserver.checked) and isProcessTranslated(processid) then
+        begin
+          processhandler.SystemArchitecture:=archX86;
+
+          SkipVirtualProtectEx:=true;
+          GDBWriteProcessMemoryCodeOnly:=true;
+          port:=strtoint(formsettings.edtRosettaDebugserverPort.Text);
+          CurrentDebuggerInterface:=TGDBServerDebuggerInterface.createAndConnect(formsettings.edtRosettaDebugserverLaunchCommand.Text, 'localhost', port);
+        end
+        else
+        begin
+          outputdebugstring('Setting the CurrentDebuggerInterface to the MacException Debug interface');
+          CurrentDebuggerInterface:=TMacExceptionDebugInterface.create;
+        end;
+      end;
       {$endif}
     end;
   except
@@ -2925,7 +3484,13 @@ begin
   start;
   WaitTillAttachedOrError;
 
-  if not terminated then lockSettings;
+
+
+  if not terminated then
+  begin
+    processhandler.open; //notify onopenprocess and set process
+    lockSettings;
+  end;
 end;
 
 constructor TDebuggerthread.MyCreate2(processID: THandle);
@@ -2955,6 +3520,12 @@ begin
   end;
 
 
+  {$IFDEF WINDOWS}
+  if fulliptlog<>nil then
+    freememandnil(fulliptlog);
+  {$ENDIF}
+
+
   if OnAttachEvent <> nil then
   begin
     OnAttachEvent.SetEvent;
@@ -2981,6 +3552,8 @@ begin
 
   if eventhandler <> nil then
     FreeAndNil(eventhandler);
+
+
 
   inherited Destroy;
 end;

@@ -15,7 +15,9 @@ type
     fCanvas: TCanvas;
     fCustomDraw: boolean;
     fOnPaint: TNotifyEvent;
+    autosizewidth: integer;
     procedure pp(var msg: TMessage); message WM_NOTIFY;
+
   protected
     procedure DefaultCustomPaint;
     procedure CreateParams(var Params: TCreateParams); override;
@@ -23,6 +25,8 @@ type
     procedure PaintWindow(DC: HDC); override;
     procedure FontChanged(Sender: TObject); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+  public
+    procedure GetPreferredSize(var PreferredWidth, PreferredHeight: integer; Raw: boolean=false; WithThemeSpace: boolean=true); override;
   published
    { property CustomDraw: boolean read fCustomDraw write fCustomDraw;
     property OnPaint: TNotifyEvent read fOnPaint write fOnPaint;
@@ -32,7 +36,40 @@ type
 
 implementation
 
-uses forms, betterControls;
+uses forms, win32proc, betterControls;
+
+procedure TNewCheckBox.GetPreferredSize(var PreferredWidth, PreferredHeight: integer; Raw: boolean=false; WithThemeSpace: boolean=true);
+var r: trect;
+  x: integer;
+  dpiscale: single;
+  w,h: integer;
+begin
+  inherited GetPreferredSize(PreferredWidth, PreferredHeight, Raw, WithThemeSpace);
+
+  if ShouldAppsUseDarkMode and (font<>nil) then
+  begin
+    if fcanvas=nil then
+    begin
+      fcanvas:=TControlCanvas.Create;
+      TControlCanvas(FCanvas).Control := Self;
+
+      //beep;
+    end;
+
+
+    dpiscale:=Screen.PixelsPerInch/96;
+    fcanvas.font:=font; //.size:=font.size;
+    r:=rect(trunc(dpiscale)-1,trunc(3*dpiscale),(trunc(dpiscale)-1)*2+PreferredHeight-trunc((3*dpiscale)*2),(trunc(dpiscale)-1)+PreferredHeight-trunc((3*dpiscale)));
+    x:=r.right+trunc(3*dpiscale);
+
+//    x:=x+fcanvas.TextWidth(caption);
+    MeasureTextForWnd(Handle, Text, w,h);
+    x:=x+w;
+
+    PreferredWidth:=x+4;
+  end;
+
+end;
 
 procedure TNewCheckBox.pp(var msg: TMessage);
 var
@@ -123,6 +160,8 @@ begin
     fcanvas.brush.style:=bsSolid;
     fcanvas.brush.color:=facecolor;
     fcanvas.Clear;
+    fcanvas.font.size:=font.size;
+
 
     fcanvas.pen.Width:=1;
     if enabled then
@@ -181,8 +220,13 @@ begin
 
 
     x:=r.right+trunc(3*dpiscale);
+
+
+
     fcanvas.TextRect(rect(0,0,width-4,height),x,(height div 2)-(fcanvas.TextHeight(caption) div 2),caption, ts);
 
+
+    autosizewidth:=x+fcanvas.TextHeight(caption)+4;
 
     if self.Focused then
       fcanvas.DrawFocusRect(rect(x,2,x+fcanvas.TextWidth(caption),height-2));
@@ -208,7 +252,9 @@ begin
   inherited CreateParams(Params);
   if ShouldAppsUseDarkMode then
   begin
-    fcanvas:=TControlCanvas.Create;
+    if fcanvas=nil then
+      fcanvas:=TControlCanvas.Create;
+
     TControlCanvas(FCanvas).Control := Self;
 
     if ShouldAppsUseDarkMode() then

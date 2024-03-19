@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="11"/>
+    <Version Value="12"/>
     <PathDelim Value="\"/>
     <General>
+      <Flags>
+        <CompatibilityMode Value="True"/>
+      </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <MainUnit Value="0"/>
       <AutoCreateForms Value="False"/>
-      <Title Value="Cheat Engine 7.3"/>
+      <Title Value="Cheat Engine 7.5"/>
       <UseXPManifest Value="True"/>
       <XPManifest>
         <DpiAware Value="True"/>
-        <ExecutionLevel Value="requireAdministrator"/>
         <TextName Value="Cheat Engine"/>
         <TextDesc Value="Scripting language and tools"/>
       </XPManifest>
@@ -25,13 +26,13 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MajorVersionNr Value="7"/>
-      <MinorVersionNr Value="2"/>
-      <BuildNr Value="7020"/>
-      <Language Value=""/>
-      <CharSet Value=""/>
-      <StringTable CompanyName="Cheat Engine" FileDescription="Cheat Engine" ProductVersion="7.2"/>
+      <MinorVersionNr Value="5"/>
+      <BuildNr Value="7707"/>
+      <Language Value="041C"/>
+      <CharSet Value="04B0"/>
+      <StringTable CompanyName="Cheat Engine" FileDescription="Cheat Engine" ProductVersion="7.5"/>
     </VersionInfo>
-    <BuildModes Count="10">
+    <BuildModes Count="11">
       <Item1 Name="Release 32-Bit" Default="True"/>
       <Item2 Name="Release 64-Bit">
         <CompilerOptions>
@@ -62,6 +63,7 @@
           </CodeGeneration>
           <Linking>
             <Debugging>
+              <DebugInfoType Value="dsDwarf2Set"/>
               <StripSymbols Value="True"/>
               <UseExternalDbgSyms Value="True"/>
             </Debugging>
@@ -81,12 +83,19 @@
             <CompilerMessages>
               <IgnoredMessages idx6058="True" idx5066="True" idx5043="True" idx4105="True" idx4104="True" idx3177="True" idx3175="True" idx2005="True"/>
             </CompilerMessages>
+            <ConfigFile>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
+            </ConfigFile>
             <CustomOptions Value="-WB00400000
 -dbenchmarkps
 -dcemain
 -dNDEBUG
--dDBVMFORAMDISWORKING"/>
-            <OtherDefines Count="13">
+-dDBVMFORAMDISWORKING
+-dNESTEDSTRUCTURES
+-dTHREADNAMESUPPORT
+-donebytejumps
+-dNoODS"/>
+            <OtherDefines Count="20">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -100,6 +109,13 @@
               <Define10 Value="memorymapped"/>
               <Define11 Value="privatebuild"/>
               <Define12 Value="DBVMFORAMDISWORKING"/>
+              <Define13 Value="NESTEDSTRUCTURES"/>
+              <Define14 Value="THREADNAMESUPPORT"/>
+              <Define15 Value="LINUXTCCTEST"/>
+              <Define16 Value="asserthexviewisthreadsafe"/>
+              <Define17 Value="DEBUGPROTOCOL"/>
+              <Define18 Value="NEWCHANGEREGONX86"/>
+              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
@@ -152,6 +168,9 @@
             <CompilerMessages>
               <IgnoredMessages idx6058="True" idx5066="True" idx5043="True" idx4105="True" idx4104="True" idx3177="True" idx3175="True" idx2005="True"/>
             </CompilerMessages>
+            <ConfigFile>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
+            </ConfigFile>
             <CustomOptions Value="-WB00400000
 -CfAVX2
 -CpCOREAVX2
@@ -159,8 +178,11 @@
 -dbenchmarkps
 -dcemain
 -dNDEBUG
--dDBVMFORAMDISWORKING"/>
-            <OtherDefines Count="13">
+-dDBVMFORAMDISWORKING
+-dNESTEDSTRUCTURES
+-donebytejumps
+-dNoODS"/>
+            <OtherDefines Count="20">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -174,6 +196,13 @@
               <Define10 Value="memorymapped"/>
               <Define11 Value="privatebuild"/>
               <Define12 Value="DBVMFORAMDISWORKING"/>
+              <Define13 Value="NESTEDSTRUCTURES"/>
+              <Define14 Value="THREADNAMESUPPORT"/>
+              <Define15 Value="LINUXTCCTEST"/>
+              <Define16 Value="asserthexviewisthreadsafe"/>
+              <Define17 Value="DEBUGPROTOCOL"/>
+              <Define18 Value="NEWCHANGEREGONX86"/>
+              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
@@ -187,7 +216,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;luamac;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;luamac;macsrc;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -225,6 +254,7 @@
             <WriteFPCLogo Value="False"/>
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
             </ConfigFile>
             <CustomOptions Value="-dbenchmarkps
 -dcemain
@@ -232,15 +262,20 @@
 -dD3DDebug
 -dNOVMX
 -dCUSTOMFLOAT
--dUSELAZFREETYPE"/>
-            <OtherDefines Count="7">
-              <Define0 Value="benchmarkps"/>
-              <Define1 Value="cemain"/>
-              <Define2 Value="NDEBUG"/>
-              <Define3 Value="D3DDebug"/>
-              <Define4 Value="NOVMX"/>
-              <Define5 Value="CUSTOMFLOAT"/>
-              <Define6 Value="USELAZFREETYPE"/>
+-dUSELAZFREETYPE
+-dNESTEDSTRUCTURES"/>
+            <OtherDefines Count="11">
+              <Define0 Value="NOTMULTITHREADED"/>
+              <Define1 Value="benchmarkps"/>
+              <Define2 Value="cemain"/>
+              <Define3 Value="NDEBUG"/>
+              <Define4 Value="D3DDebug"/>
+              <Define5 Value="NOVMX"/>
+              <Define6 Value="CUSTOMFLOAT"/>
+              <Define7 Value="XDEBUG"/>
+              <Define8 Value="USELAZFREETYPE"/>
+              <Define9 Value="NESTEDSTRUCTURES"/>
+              <Define10 Value="THREADNAMESUPPORT"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
@@ -288,7 +323,10 @@
               <ShowHints Value="False"/>
             </Verbosity>
             <WriteFPCLogo Value="False"/>
-            <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG"/>
+            <ConfigFile>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
+            </ConfigFile>
+            <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dNESTEDSTRUCTURES"/>
           </Other>
         </CompilerOptions>
       </Item5>
@@ -316,6 +354,9 @@
             </Optimizations>
           </CodeGeneration>
           <Linking>
+            <Debugging>
+              <DebugInfoType Value="dsDwarf2Set"/>
+            </Debugging>
             <Options>
               <Win32>
                 <GraphicApplication Value="True"/>
@@ -330,9 +371,18 @@
             <WriteFPCLogo Value="False"/>
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
             </ConfigFile>
-            <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dD3DDebug -dNOVMX -dCUSTOMFLOAT"/>
-            <OtherDefines Count="9">
+            <CustomOptions Value="-WB00400000
+-dbenchmarkps
+-dcemain
+-dNDEBUG
+-dD3DDebug
+-dNOVMX
+-dCUSTOMFLOAT
+-dNESTEDSTRUCTURES
+-doverflowdebug"/>
+            <OtherDefines Count="20">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -342,11 +392,109 @@
               <Define6 Value="CUSTOMFLOAT"/>
               <Define7 Value="XDEBUG"/>
               <Define8 Value="memleaksearch"/>
+              <Define9 Value="checkassembleralphabet"/>
+              <Define10 Value="memorymapped"/>
+              <Define11 Value="privatebuild"/>
+              <Define12 Value="DBVMFORAMDISWORKING"/>
+              <Define13 Value="NESTEDSTRUCTURES"/>
+              <Define14 Value="THREADNAMESUPPORT"/>
+              <Define15 Value="LINUXTCCTEST"/>
+              <Define16 Value="asserthexviewisthreadsafe"/>
+              <Define17 Value="DEBUGPROTOCOL"/>
+              <Define18 Value="NEWCHANGEREGONX86"/>
+              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
       </Item6>
-      <Item7 Name="debug-nomt">
+      <Item7 Name="Debug Optimized 64-Bit">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\cheatengine-$(TargetCPU)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <Parsing>
+            <Style Value="1"/>
+            <SyntaxOptions>
+              <SyntaxMode Value="Delphi"/>
+            </SyntaxOptions>
+          </Parsing>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="x86_64"/>
+            <TargetOS Value="win64"/>
+            <Optimizations>
+              <OptimizationLevel Value="3"/>
+              <VariablesInRegisters Value="True"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <DebugInfoType Value="dsDwarf2Set"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+            <Options>
+              <Win32>
+                <GraphicApplication Value="True"/>
+              </Win32>
+            </Options>
+          </Linking>
+          <Other>
+            <Verbosity>
+              <ShowNotes Value="False"/>
+              <ShowHints Value="False"/>
+            </Verbosity>
+            <WriteFPCLogo Value="False"/>
+            <CompilerMessages>
+              <IgnoredMessages idx6058="True" idx5066="True" idx5043="True" idx4105="True" idx4104="True" idx3177="True" idx3175="True" idx2005="True"/>
+            </CompilerMessages>
+            <ConfigFile>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
+            </ConfigFile>
+            <CustomOptions Value="-WB00400000
+-dbenchmarkps
+-dcemain
+-dNDEBUG
+-dDBVMFORAMDISWORKING
+-dNESTEDSTRUCTURES
+-dTHREADNAMESUPPORT
+-donebytejumps
+-dNoODS
+-dDEBUGTHREADERRORS"/>
+            <OtherDefines Count="20">
+              <Define0 Value="NOTMULTITHREADED"/>
+              <Define1 Value="benchmarkps"/>
+              <Define2 Value="cemain"/>
+              <Define3 Value="NDEBUG"/>
+              <Define4 Value="D3DDebug"/>
+              <Define5 Value="NOVMX"/>
+              <Define6 Value="CUSTOMFLOAT"/>
+              <Define7 Value="XDEBUG"/>
+              <Define8 Value="memleaksearch"/>
+              <Define9 Value="checkassembleralphabet"/>
+              <Define10 Value="memorymapped"/>
+              <Define11 Value="privatebuild"/>
+              <Define12 Value="DBVMFORAMDISWORKING"/>
+              <Define13 Value="NESTEDSTRUCTURES"/>
+              <Define14 Value="THREADNAMESUPPORT"/>
+              <Define15 Value="LINUXTCCTEST"/>
+              <Define16 Value="asserthexviewisthreadsafe"/>
+              <Define17 Value="DEBUGPROTOCOL"/>
+              <Define18 Value="NEWCHANGEREGONX86"/>
+              <Define19 Value="overflowdebug"/>
+            </OtherDefines>
+          </Other>
+        </CompilerOptions>
+      </Item7>
+      <Item8 Name="debug-nomt">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -370,6 +518,9 @@
             </Optimizations>
           </CodeGeneration>
           <Linking>
+            <Debugging>
+              <DebugInfoType Value="dsDwarf2Set"/>
+            </Debugging>
             <Options>
               <Win32>
                 <GraphicApplication Value="True"/>
@@ -385,12 +536,28 @@
             <WriteFPCLogo Value="False"/>
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
             </ConfigFile>
-            <CustomOptions Value="-dNOTMULTITHREADED -dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dD3DDebug -dNOVMX -dCUSTOMFLOAT -dXDEBUG"/>
+            <CustomOptions Value="-dNOTMULTITHREADED -dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dD3DDebug -dNOVMX -dCUSTOMFLOAT -dXDEBUG -dNESTEDSTRUCTURES -dDEBUGTHREADERRORS"/>
+            <OtherDefines Count="13">
+              <Define0 Value="NOTMULTITHREADED"/>
+              <Define1 Value="benchmarkps"/>
+              <Define2 Value="cemain"/>
+              <Define3 Value="NDEBUG"/>
+              <Define4 Value="D3DDebug"/>
+              <Define5 Value="NOVMX"/>
+              <Define6 Value="CUSTOMFLOAT"/>
+              <Define7 Value="XDEBUG"/>
+              <Define8 Value="memleaksearch"/>
+              <Define9 Value="checkassembleralphabet"/>
+              <Define10 Value="memorymapped"/>
+              <Define11 Value="privatebuild"/>
+              <Define12 Value="DBVMFORAMDISWORKING"/>
+            </OtherDefines>
           </Other>
         </CompilerOptions>
-      </Item7>
-      <Item8 Name="debug-nomt mac">
+      </Item8>
+      <Item9 Name="debug-nomt mac">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -399,7 +566,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;luamac;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;macsrc;luamac;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -435,6 +602,7 @@
             <WriteFPCLogo Value="False"/>
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
             </ConfigFile>
             <CustomOptions Value="-dNOTMULTITHREADED
 -dbenchmarkps
@@ -444,11 +612,27 @@
 -dNOVMX
 -dCUSTOMFLOAT
 -dXDEBUG
--dUSELAZFREETYPE"/>
+-dUSELAZFREETYPE
+-dNESTEDSTRUCTURES
+-dTHREADNAMESUPPORT
+-dlaztrunk"/>
+            <OtherDefines Count="11">
+              <Define0 Value="NOTMULTITHREADED"/>
+              <Define1 Value="benchmarkps"/>
+              <Define2 Value="cemain"/>
+              <Define3 Value="NDEBUG"/>
+              <Define4 Value="D3DDebug"/>
+              <Define5 Value="NOVMX"/>
+              <Define6 Value="CUSTOMFLOAT"/>
+              <Define7 Value="XDEBUG"/>
+              <Define8 Value="USELAZFREETYPE"/>
+              <Define9 Value="NESTEDSTRUCTURES"/>
+              <Define10 Value="THREADNAMESUPPORT"/>
+            </OtherDefines>
           </Other>
         </CompilerOptions>
-      </Item8>
-      <Item9 Name="debug-nomt 32-bit">
+      </Item9>
+      <Item10 Name="debug-nomt 32-bit">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -474,6 +658,10 @@
             </Optimizations>
           </CodeGeneration>
           <Linking>
+            <Debugging>
+              <DebugInfoType Value="dsDwarf2Set"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
             <Options>
               <Win32>
                 <GraphicApplication Value="True"/>
@@ -489,6 +677,7 @@
             <WriteFPCLogo Value="False"/>
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
             </ConfigFile>
             <CustomOptions Value="-WB00400000
 -dNOTMULTITHREADED
@@ -498,8 +687,10 @@
 -dD3DDebug
 -dNOVMX
 -dCUSTOMFLOAT
--dXDEBUG"/>
-            <OtherDefines Count="10">
+-dXDEBUG
+-dNESTEDSTRUCTURES
+-dDEBUGTHREADERRORS"/>
+            <OtherDefines Count="13">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -510,11 +701,14 @@
               <Define7 Value="XDEBUG"/>
               <Define8 Value="memleaksearch"/>
               <Define9 Value="checkassembleralphabet"/>
+              <Define10 Value="memorymapped"/>
+              <Define11 Value="privatebuild"/>
+              <Define12 Value="DBVMFORAMDISWORKING"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
-      </Item9>
-      <Item10 Name="debug-nomt 64-bit">
+      </Item10>
+      <Item11 Name="debug-nomt 64-bit">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -538,6 +732,7 @@
           </CodeGeneration>
           <Linking>
             <Debugging>
+              <DebugInfoType Value="dsDwarf2Set"/>
               <TrashVariables Value="True"/>
               <UseExternalDbgSyms Value="True"/>
             </Debugging>
@@ -555,6 +750,7 @@
             <WriteFPCLogo Value="False"/>
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
+              <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
             </ConfigFile>
             <CompilerMessages>
               <IgnoredMessages idx9201="True" idx6058="True" idx5089="True" idx5066="True" idx5043="True" idx4105="True" idx4104="True" idx3177="True" idx3175="True"/>
@@ -567,8 +763,13 @@
 -dD3DDebug
 -dNOVMX
 -dCUSTOMFLOAT
--dXDEBUG"/>
-            <OtherDefines Count="13">
+-dXDEBUG
+-dNESTEDSTRUCTURES
+-dTHREADNAMESUPPORT
+-dLINUXTCCTEST
+-donebytejumps
+-dDEBUGTHREADERRORS"/>
+            <OtherDefines Count="20">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -582,10 +783,17 @@
               <Define10 Value="memorymapped"/>
               <Define11 Value="privatebuild"/>
               <Define12 Value="DBVMFORAMDISWORKING"/>
+              <Define13 Value="NESTEDSTRUCTURES"/>
+              <Define14 Value="THREADNAMESUPPORT"/>
+              <Define15 Value="LINUXTCCTEST"/>
+              <Define16 Value="asserthexviewisthreadsafe"/>
+              <Define17 Value="DEBUGPROTOCOL"/>
+              <Define18 Value="NEWCHANGEREGONX86"/>
+              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
-      </Item10>
+      </Item11>
     </BuildModes>
     <PublishOptions>
       <Version Value="2"/>
@@ -593,46 +801,49 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T 'Lazarus Run Output' -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
+        <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T 'Lazarus Run Output' -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
+            <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
           </local>
         </Mode0>
       </Modes>
     </RunParams>
-    <RequiredPackages Count="8">
+    <RequiredPackages Count="9">
       <Item1>
-        <PackageName Value="FCL"/>
+        <PackageName Value="laz.virtualtreeview_package"/>
       </Item1>
       <Item2>
-        <PackageName Value="SQLDBLaz"/>
+        <PackageName Value="FCL"/>
       </Item2>
       <Item3>
-        <PackageName Value="LazControls"/>
+        <PackageName Value="SQLDBLaz"/>
       </Item3>
       <Item4>
-        <PackageName Value="LCLBase"/>
-        <MinVersion Major="1" Release="1" Valid="True"/>
+        <PackageName Value="LazControls"/>
       </Item4>
       <Item5>
-        <PackageName Value="IDEIntf"/>
+        <PackageName Value="LCLBase"/>
+        <MinVersion Major="1" Release="1" Valid="True"/>
       </Item5>
       <Item6>
-        <PackageName Value="CodeTools"/>
+        <PackageName Value="IDEIntf"/>
       </Item6>
       <Item7>
-        <PackageName Value="SynEdit"/>
-        <MinVersion Major="1" Valid="True"/>
+        <PackageName Value="CodeTools"/>
       </Item7>
       <Item8>
-        <PackageName Value="LCL"/>
+        <PackageName Value="SynEdit"/>
+        <MinVersion Major="1" Valid="True"/>
       </Item8>
+      <Item9>
+        <PackageName Value="LCL"/>
+      </Item9>
     </RequiredPackages>
-    <Units Count="410">
+    <Units Count="424">
       <Unit0>
         <Filename Value="cheatengine.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -1575,6 +1786,7 @@
       <Unit171>
         <Filename Value="luabrush.pas"/>
         <IsPartOfProject Value="True"/>
+        <UnitName Value="LuaBrush"/>
       </Unit171>
       <Unit172>
         <Filename Value="LuaPicture.pas"/>
@@ -2526,6 +2738,7 @@
         <Filename Value="frmexceptionregionlistunit.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="frmExceptionRegionList"/>
+        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="frmExceptionRegionListUnit"/>
       </Unit359>
@@ -2793,6 +3006,82 @@
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="frmSourceDisplayUnit"/>
       </Unit409>
+      <Unit410>
+        <Filename Value="frmcr3switcherunit.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="frmCR3Switcher"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="frmCR3SwitcherUnit"/>
+      </Unit410>
+      <Unit411>
+        <Filename Value="disassemblerarm64.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="DisAssemblerARM64"/>
+      </Unit411>
+      <Unit412>
+        <Filename Value="contexthandler.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit412>
+      <Unit413>
+        <Filename Value="disassemblerarm32.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="DisAssemblerARM32"/>
+      </Unit413>
+      <Unit414>
+        <Filename Value="frmanchoreditor.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="AnchorEditor"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="frmAnchorEditor"/>
+      </Unit414>
+      <Unit415>
+        <Filename Value="disassemblerarm32thumb.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="disassemblerArm32Thumb"/>
+      </Unit415>
+      <Unit416>
+        <Filename Value="iptnative.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit416>
+      <Unit417>
+        <Filename Value="iptlogdisplay.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="frmIPTLogDisplay"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit417>
+      <Unit418>
+        <Filename Value="luavirtualstringtree.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="LuaVirtualStringTree"/>
+      </Unit418>
+      <Unit419>
+        <Filename Value="userbytedisassembler.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit419>
+      <Unit420>
+        <Filename Value="luanetworkinterface.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="LuaNetworkInterface"/>
+      </Unit420>
+      <Unit421>
+        <Filename Value="libcepack.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit421>
+      <Unit422>
+        <Filename Value="gdbserverdebuggerinterface.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="GDBServerDebuggerInterface"/>
+      </Unit422>
+      <Unit423>
+        <Filename Value="gdbserverconnectdialog.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="frmGDBServerConnectDialog"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit423>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -2841,8 +3130,18 @@
       <CompilerMessages>
         <IgnoredMessages idx6058="True"/>
       </CompilerMessages>
-      <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dDBVMFORAMDISWORKING"/>
-      <OtherDefines Count="13">
+      <ConfigFile>
+        <WriteConfigFilePath Value="$(ProjOutDir)\fpclaz.cfg"/>
+      </ConfigFile>
+      <CustomOptions Value="-WB00400000
+-dbenchmarkps
+-dcemain
+-dNDEBUG
+-dDBVMFORAMDISWORKING
+-dNESTEDSTRUCTURES
+-donebytejumps
+-dNoODS"/>
+      <OtherDefines Count="20">
         <Define0 Value="NOTMULTITHREADED"/>
         <Define1 Value="benchmarkps"/>
         <Define2 Value="cemain"/>
@@ -2856,11 +3155,18 @@
         <Define10 Value="memorymapped"/>
         <Define11 Value="privatebuild"/>
         <Define12 Value="DBVMFORAMDISWORKING"/>
+        <Define13 Value="NESTEDSTRUCTURES"/>
+        <Define14 Value="THREADNAMESUPPORT"/>
+        <Define15 Value="LINUXTCCTEST"/>
+        <Define16 Value="asserthexviewisthreadsafe"/>
+        <Define17 Value="DEBUGPROTOCOL"/>
+        <Define18 Value="NEWCHANGEREGONX86"/>
+        <Define19 Value="overflowdebug"/>
       </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>
-    <Exceptions Count="17">
+    <Exceptions Count="19">
       <Item1>
         <Name Value="EAbort"/>
         <Enabled Value="False"/>
@@ -2919,6 +3225,12 @@
       <Item17>
         <Name Value="ESavedScanException"/>
       </Item17>
+      <Item18>
+        <Name Value="EAdvancedOptionsDuplicateException"/>
+      </Item18>
+      <Item19>
+        <Name Value="EDebuggerAttachException"/>
+      </Item19>
     </Exceptions>
   </Debugging>
 </CONFIG>

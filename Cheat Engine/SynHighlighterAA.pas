@@ -330,6 +330,7 @@ type
     function Func68: TtkTokenKind; //include
     function Func81: TtkTokenKind; //allocnx
     function Func82: TtkTokenKind; //assert //allocxo
+    function Func84: TtkTokenKind; //aobscanex
     function Func92: TtkTokenKind; //globalalloc
     function Func99: TtkTokenKind; //reassemble
     function Func101: TtkTokenKind; //fullaccess/loadbinary/struct
@@ -439,7 +440,7 @@ uses
 {$IFDEF SYN_CLX}
   QSynEditStrConst;
 {$ELSE}
-  SynEditStrConst, registry, betterControls;
+  SynEditStrConst, registry, betterControls,mainunit2;
 {$ENDIF}
 
 
@@ -520,7 +521,7 @@ end;
 
 function TSynCustomHighlighterHelper.loadFromRegistryDefault: boolean;
 begin
-  result:=loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\Cheat Engine\CPP Highlighter'+darkmodestring);
+  result:=loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\CPP Highlighter'+darkmodestring);
 end;
 
 procedure aa_AddExtraCommand(command:pchar);
@@ -623,6 +624,7 @@ begin
   fIdentFuncTable[68] := {$IFDEF FPC}@{$ENDIF}Func68;
   fIdentFuncTable[81] := {$IFDEF FPC}@{$ENDIF}Func81;
   fIdentFuncTable[82] := {$IFDEF FPC}@{$ENDIF}Func82;
+  fIdentFuncTable[84] := {$IFDEF FPC}@{$ENDIF}Func84;
   fIdentFuncTable[92] := {$IFDEF FPC}@{$ENDIF}Func92;
   fIdentFuncTable[99] := {$IFDEF FPC}@{$ENDIF}Func99;
   fIdentFuncTable[101] := {$IFDEF FPC}@{$ENDIF}Func101;
@@ -891,7 +893,8 @@ end;
 function TSynAASyn.Func39: TtkTokenKind; //enable
 begin
   if KeyComp('enable') then Result := tkspace else
-    Result := tkIdentifier;
+    if KeyComp('jmp1') then Result := tkopcode else
+      Result := tkIdentifier;
 end;
 
 function TSynAASyn.Func40: TtkTokenKind; //esp/sil
@@ -1044,6 +1047,12 @@ begin
   if KeyComp('assert') then Result := tkKey else
     if KeyComp('allocxo') then Result := tkKey else
       Result := tkIdentifier;
+end;
+
+function TSynAASyn.Func84: TtkTokenKind; //aobscanex
+begin
+  if KeyComp('aobscanex') then Result := tkKey else
+    Result := tkIdentifier;
 end;
 
 function TSynAASyn.Func92: TtkTokenKind; //globalalloc
@@ -1369,6 +1378,7 @@ var i,l: integer;
   braceend: integer;
 begin
   changeHighlighter:=chlNo;
+  braceend:=0;
 
   l:=StrLen(fLine);
   //check for syntax highlighter changes
@@ -1453,7 +1463,7 @@ begin
         if fLuaSyntaxHighlighter=nil then
         begin
           fLuaSyntaxHighlighter:=TSynLuaSyn.Create(self);
-          fLuaSyntaxHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter'+darkmodestring);
+          fLuaSyntaxHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
         end;
         fCurrentSecondaryHighlighter:=fLuaSyntaxHighlighter;
       end;
@@ -1463,7 +1473,7 @@ begin
         if fFPCSyntaxHighlighter=nil then
         begin
           fFPCSyntaxHighlighter:=TSynPasSyn.Create(self);
-          fFPCSyntaxHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Pascal Highlighter'+darkmodestring);
+          fFPCSyntaxHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Pascal Highlighter'+darkmodestring);
         end;
         fCurrentSecondaryHighlighter:=fFPCSyntaxHighlighter;
       end;
@@ -1475,7 +1485,7 @@ begin
           fCPPSyntaxHighlighter:=TSynCppSyn.Create(self);
 
 
-          fCPPSyntaxHighlighter.loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\Cheat Engine\CPP Highlighter'+darkmodestring);
+          fCPPSyntaxHighlighter.loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\CPP Highlighter'+darkmodestring);
 
         end;
         fCurrentSecondaryHighlighter:=fCPPSyntaxHighlighter;
@@ -1812,6 +1822,7 @@ begin
 end;
 
 procedure TSynAASyn.UnknownProc;
+var utf8len: integer;
 begin
 {$IFDEF SYN_MBCSSUPPORT}
   if FLine[Run] in LeadBytes then
@@ -1821,7 +1832,13 @@ begin
 
   fTokenID := tkUnknown;
   if ord(fline[run])>$80 then  //utf8
-    inc(Run,2)
+  begin
+    utf8len:=Utf8CodePointLen(@fline[run],length(fline)-run,false);
+    if utf8len=0 then
+      utf8len:=2; //guess...
+
+    inc(Run,utf8len);
+  end
   else
     inc(run);
 end;
@@ -2074,10 +2091,10 @@ begin
   reg.free;
 
   if fLuaSyntaxHighlighter<>nil then
-    fLuaSyntaxHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter'+darkmodestring);  //perhaps make this a var
+    fLuaSyntaxHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);  //perhaps make this a var
 
   if fCPPSyntaxHighlighter<>nil then
-    fCPPSyntaxHighlighter.loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\Cheat Engine\CPP Highlighter'+darkmodestring);  //perhaps make this a var
+    fCPPSyntaxHighlighter.loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\CPP Highlighter'+darkmodestring);  //perhaps make this a var
 
   DefHighlightChange(self);
 end;

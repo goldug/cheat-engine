@@ -214,6 +214,10 @@ type
     menuAOBInjection: TMenuItem;
     menuFullInjection: TMenuItem;
     MenuItem1: TMenuItem;
+    mi1ByteExceptionJMP: TMenuItem;
+    mi14ByteJMP: TMenuItem;
+    mi5ByteJMP: TMenuItem;
+    N1: TMenuItem;
     miMoveLeft: TMenuItem;
     miMoveRight: TMenuItem;
     miLuaSyntaxCheck: TMenuItem;
@@ -245,6 +249,7 @@ type
     Coderelocation1: TMenuItem;
     miNewTab: TMenuItem;
     N2: TMenuItem;
+    Separator1: TMenuItem;
     Syntaxhighlighting1: TMenuItem;
     TabMenu: TPopupMenu;
     Close1: TMenuItem;
@@ -262,11 +267,13 @@ type
     View1: TMenuItem;
     AAPref1: TMenuItem;
     procedure btnExecuteClick(Sender: TObject);
+    procedure emplate1Click(Sender: TObject);
     procedure FormDropFiles(Sender: TObject; const FileNames: array of String);
     procedure Load1Click(Sender: TObject);
     procedure menuAOBInjectionClick(Sender: TObject);
     procedure menuFullInjectionClick(Sender: TObject);
     procedure MenuItem1Click(Sender: TObject);
+    procedure mi1ByteExceptionJMPClick(Sender: TObject);
     procedure miLuaSyntaxCheckClick(Sender: TObject);
     procedure miMoveLeftClick(Sender: TObject);
     procedure miMoveRightClick(Sender: TObject);
@@ -279,6 +286,7 @@ type
     procedure miCallLuaClick(Sender: TObject);
     procedure miNewWindowClick(Sender: TObject);
     procedure miRedoClick(Sender: TObject);
+    procedure N1Click(Sender: TObject);
     procedure ReplaceDialog1Find(Sender: TObject);
     procedure ReplaceDialog1Replace(Sender: TObject);
     procedure Save1Click(Sender: TObject);
@@ -382,11 +390,10 @@ type
   end;
 
 
-procedure Getjumpandoverwrittenbytes(address,addressto: ptrUINT; jumppart,originalcodepart: tstrings);
 procedure generateAPIHookScript(script: tstrings; address: string; addresstogoto: string; addresstostoreneworiginalfunction: string=''; nameextension:string='0'; targetself: boolean=false);
-procedure GenerateCodeInjectionScript(script: tstrings; addressstring: string);
-procedure GenerateAOBInjectionScript(script: TStrings; address: string; symbolname: string; commentradius: integer=10);
-procedure GenerateFullInjectionScript(Script: tstrings; address: string; commentradius: integer=10);
+procedure GenerateCodeInjectionScript(script: tstrings; addressstring: string; farjmp: boolean=false; jmp1:boolean=false; originalcodeMinSize: integer=1);
+procedure GenerateAOBInjectionScript(script: TStrings; address: string; symbolname: string; commentradius: integer=10; farjmp: boolean=false; jmp1: boolean=false; originalcodeMinSize: integer=1);
+procedure GenerateFullInjectionScript(Script: tstrings; address: string; commentradius: integer=10; farjmp: boolean=false; jmp1: boolean=false; originalcodeMinSize: integer=1);
 
 function registerAutoAssemblerTemplate(name: string; m: TAutoAssemblerTemplateCallback; shortcut: TShortCut=0): integer;
 procedure unregisterAutoAssemblerTemplate(id: integer);
@@ -395,6 +402,7 @@ function GetUniqueAOB(mi: TModuleInfo; address: ptrUint; codesize: Integer; var 
 function GetNextAllocNumber(script: tstrings): integer;
 procedure AddSnapshotAsComment(script: tstrings; address: ptruint; radius: integer=10);
 
+procedure GetOriginalInstruction(var address: ptruint; instructioncode: tstrings; farjmp: boolean; skipsymbols: boolean=FALSE);
 
 procedure ReloadAllAutoInjectHighlighters;
 
@@ -405,7 +413,8 @@ uses frmAAEditPrefsUnit,MainUnit,memorybrowserformunit,APIhooktemplatesettingsfr
   Globals, Parsers, MemoryQuery, {$ifdef windows}GnuAssembler,{$endif} LuaCaller, SynEditTypes, CEFuncProc,
   StrUtils, types, ComCtrls, LResources, NewKernelHandler, MainUnit2, Assemblerunit,
   autoassembler,  registry, luahandler, memscan, foundlisthelper, ProcessHandlerUnit,
-  frmLuaEngineUnit, frmSyntaxHighlighterEditor, lua, lualib, lauxlib, LuaClass, LuaForm, SymbolListHandler;
+  frmLuaEngineUnit, frmSyntaxHighlighterEditor, lua, lualib, lauxlib, LuaClass,
+  LuaForm, SymbolListHandler, contexthandler;
 
 resourcestring
   rsExecuteScript = 'Execute script';
@@ -413,8 +422,8 @@ resourcestring
   rsLUAScript = 'LUA Script';
   rsGNUAScript = 'GNU Assembler Script';
   rsWriteCode = 'Write code';
-  rsCEAFilter = 'Cheat Engine Assembly (*.CEA)|*.CEA|All Files ( *.* )|*.*';
-  rsCEGAFilter = 'Cheat Engine GNU Assembly (*.CEGA)|*.CEGA|All Files ( *.* )|*.*';
+  rsCEAFilter = strCheatEngine+' Assembly (*.CEA)|*.CEA|All Files ( *.* )|*.*';
+  rsCEGAFilter = strCheatEngine+' GNU Assembly (*.CEGA)|*.CEGA|All Files ( *.* )|*.*';
   rsAutoAssembler = 'Auto assembler';
   rsCodeNeedsEnableAndDisable = 'The code needs an [ENABLE] and a [DISABLE] section if you want to use this script as a table entry';
   rsNotAllCodeIsInjectable = 'Not all code is injectable.'#13#10'%s'#13#10'Are you sure you want to edit it to this?';
@@ -449,6 +458,11 @@ resourcestring
   rsAAAOBTemplate_Date = 'Date';
   rsAAAOBTemplate_Author = 'Author';
   rsAAAOBTemplate_blabla = 'This script does blah blah blah';
+  rsOriginalCode = 'Original code';
+  rsLessThan2GBDistance = '<2GB Distance';
+  rsMoreThan2GBDistance = '>2GB Distance';
+  rs5ByteJMP = '5 Byte JMP (<2GB Distance)';
+  rs14ByteJMP = '14 Byte JMP (>2GB Distance)';
 
 var
   AutoAssemblerTemplates: TAutoAssemblerTemplates;
@@ -583,7 +597,8 @@ begin
   case mode of
     smLua:
     begin
-      assemblescreen.Highlighter:=LuaHighlighter;
+      if assemblescreen<>nil then
+        assemblescreen.Highlighter:=LuaHighlighter;
 
       //change gui to lua style
       btnExecute.Caption:=rsExecuteScript;
@@ -604,7 +619,8 @@ begin
 
     smAutoAssembler:
     begin
-      assemblescreen.Highlighter:=AAHighlighter;
+      if assemblescreen<>nil then
+        assemblescreen.Highlighter:=AAHighlighter;
 
 
       //change gui to autoassembler style
@@ -614,7 +630,7 @@ begin
       savedialog1.DefaultExt:='CEA';
       savedialog1.Filter:=rsCEAFilter;
       Assigntocurrentcheattable1.Visible:=true;
-      emplate1.Visible:=true;
+      emplate1.Visible:=processhandler.SystemArchitecture=archX86;
       caption:=rsAutoAssembler;
       inject1.Visible:=false;
       helpcontext:=18; //auto asm help
@@ -624,7 +640,8 @@ begin
 
     smGnuAssembler:
     begin
-      assemblescreen.Highlighter:=nil; //no highlighter for it yet
+      if assemblescreen<>nil then
+        assemblescreen.Highlighter:=nil; //no highlighter for it yet
 
       btnExecute.Caption:=rsWriteCode;
       opendialog1.DefaultExt:='CEGA';
@@ -756,6 +773,15 @@ begin
 {$endif}
 end;
 
+procedure TfrmAutoInject.emplate1Click(Sender: TObject);
+begin
+  mi5ByteJMP.Visible:=processhandler.is64Bit and (processhandler.SystemArchitecture=archX86);
+  mi14ByteJMP.visible:=mi5ByteJMP.Visible;
+  n1.visible:=mi5ByteJMP.Visible;
+  mi1ByteExceptionJMP.Visible:=processhandler.SystemArchitecture=archX86;
+  n2.visible:=mi1ByteExceptionJMP.Visible;
+end;
+
 procedure TfrmAutoInject.FormDropFiles(Sender: TObject; const FileNames: array of String);
 var load: boolean;
 begin
@@ -838,6 +864,11 @@ end;
 procedure TfrmAutoInject.miRedoClick(Sender: TObject);
 begin
   assemblescreen.Redo;
+end;
+
+procedure TfrmAutoInject.N1Click(Sender: TObject);
+begin
+
 end;
 
 procedure TfrmAutoInject.ReplaceDialog1Find(Sender: TObject);
@@ -981,18 +1012,283 @@ begin
 {$endif}
 end;
 
-procedure GenerateCodeInjectionScript(script: tstrings; addressstring: string);
+function canBeUsedAsAddressStorage(regname: string; out actualregname: string): boolean;
+//Function to convert a register into a base register
+begin
+  regname:=lowercase(regname);
+  result:=false;
+  if (regname='rax') or (regname='eax') then  //no lower types like ah,al, as reads on these do not clear the upper bits
+  begin
+    actualregname:='rax';
+    exit(true);
+  end;
+
+  if (regname='rbx') or (regname='ebx') then
+  begin
+    actualregname:='rbx';
+    exit(true);
+  end;
+
+  if (regname='rcx') or (regname='ecx') then
+  begin
+    actualregname:='rcx';
+    exit(true);
+  end;
+
+  if (regname='rdx') or (regname='edx') then
+  begin
+    actualregname:='rdx';
+    exit(true);
+  end;
+
+  if (regname='rsi') or (regname='esi') then
+  begin
+    actualregname:='rsi';
+    exit(true);
+  end;
+
+  if (regname='rdi') or (regname='edi') then
+  begin
+    actualregname:='rdi';
+    exit(true);
+  end;
+
+  if (regname='rbp') or (regname='ebp') then
+  begin
+    actualregname:='rbp';
+    exit(true);
+  end;
+
+  if (regname='rsp') or (regname='esp') then
+  begin
+    actualregname:='rsp';
+    exit(true);
+  end;
+
+  if (regname='r8') or (regname='r8d') then
+  begin
+    actualregname:='r8';
+    exit(true);
+  end;
+
+  if (regname='r9') or (regname='r9d') then
+  begin
+    actualregname:='r9';
+    exit(true);
+  end;
+
+  if (regname='r10') or (regname='r10d') then
+  begin
+    actualregname:='r10';
+    exit(true);
+  end;
+
+  if (regname='r11') or (regname='r11d') then
+  begin
+    actualregname:='r11';
+    exit(true);
+  end;
+
+  if (regname='r12') or (regname='r12d') then
+  begin
+    actualregname:='r12';
+    exit(true);
+  end;
+
+  if (regname='r13') or (regname='r13d') then
+  begin
+    actualregname:='r13';
+    exit(true);
+  end;
+
+  if (regname='r14') or (regname='r14d') then
+  begin
+    actualregname:='r14';
+    exit(true);
+  end;
+
+  if (regname='r15') or (regname='r15d') then
+  begin
+    actualregname:='r15';
+    exit(true);
+  end;
+end;
+
+procedure GetOriginalInstruction(var address: ptruint; instructioncode: tstrings; farjmp: boolean; skipsymbols: boolean=false);
+var
+  d: TDisassembler;
+
+  i: integer;
+  addressSpecifierIndexPos: integer;
+  addressSpecifierString: string;
+
+  paramsplit: array of string;
+  usedreg, usedreg2: string;
+  temps: string;
+
+  rewritten: boolean;
+  commapos: integer;
+begin
+  d:=TDisassembler.create;
+  if skipsymbols then
+    d.showsymbols:=false
+  else
+    d.showsymbols:=symhandler.showsymbols;
+
+  d.showmodules:=symhandler.showmodules;
+  d.showsections:=symhandler.showsections;
+  d.disassemble(address);
+
+  addressSpecifierIndexPos:=d.LastDisassembleData.parameters.IndexOf('[');
+  commapos:=d.LastDisassembleData.parameters.IndexOf(',');
+
+  if (processhandler.SystemArchitecture=archX86) and (farjmp) and (d.LastDisassembleData.riprelative>0) and (addressSpecifierIndexPos<>-1 ) then
+  begin
+    //needs a rewrite
+    rewritten:=false;
+
+    instructioncode.add('//'+rsOriginalCode+':'+d.LastDisassembleData.opcode+' '+d.LastDisassembleData.parameters);
+    addressSpecifierString:=d.LastDisassembleData.parameters.Substring(d.LastDisassembleData.parameters.IndexOf('[')+1);
+    addressSpecifierString:=addressSpecifierString.Substring(0, addressSpecifierString.IndexOf(']'));
+
+
+
+    //check if it's a read, and if so, which reg is overwritten. Perhaps it can be used as a temp reg
+    if (addressSpecifierIndexPos>0) and (d.LastDisassembleData.parameters.Contains(',')) then
+    begin
+      //read op
+      paramsplit:=d.LastDisassembleData.parameters.Split(',');
+      if length(paramsplit)=2 then
+      begin
+        paramsplit[0]:=trim(paramsplit[0]);
+
+        if d.LastDisassembleData.opcode='lea' then
+        begin
+          //lea r8,[address] = mov r8,address , which can be encoded fully
+          instructioncode.add('mov '+paramsplit[0]+','+addressSpecifierString);
+          rewritten:=true;
+        end
+        else
+        if canBeUsedAsAddressStorage(paramsplit[0], usedreg) then //e.g movss xmm1,[address] is a big no here
+        begin
+          instructioncode.add('mov '+usedreg+','+addressSpecifierString);
+          instructioncode.add(d.LastDisassembleData.opcode+' '+d.LastDisassembleData.parameters.Replace(addressSpecifierString,usedreg));
+          rewritten:=true;
+        end;
+      end;
+    end;
+
+    if rewritten=false then
+    begin
+      //not a write, or formatted in a way not handled
+      usedReg:='';
+      usedReg2:='';
+      if not (d.LastDisassembleData.parameters.Contains('rax') or
+         d.LastDisassembleData.parameters.Contains('eax') or
+         d.LastDisassembleData.parameters.Contains('ax') or
+         d.LastDisassembleData.parameters.Contains('ah') or
+         d.LastDisassembleData.parameters.Contains('al'))
+      then
+        usedReg:='rax'
+      else
+      if not (d.LastDisassembleData.parameters.Contains('rbx') or
+         d.LastDisassembleData.parameters.Contains('ebx') or
+         d.LastDisassembleData.parameters.Contains('bx') or
+         d.LastDisassembleData.parameters.Contains('bh') or
+         d.LastDisassembleData.parameters.Contains('bl'))
+      then
+      begin
+        if usedReg='' then
+          usedreg:='rbx'
+        else
+          usedreg2:='rbx';
+      end
+      else
+      if not (d.LastDisassembleData.parameters.Contains('rcx') or
+         d.LastDisassembleData.parameters.Contains('ecx') or
+         d.LastDisassembleData.parameters.Contains('cx') or
+         d.LastDisassembleData.parameters.Contains('ch') or
+         d.LastDisassembleData.parameters.Contains('cl'))
+      then
+      begin
+        if usedReg='' then
+          usedreg:='rcx'
+        else
+          usedreg2:='rcx';
+      end
+      else
+      if not (d.LastDisassembleData.parameters.Contains('rdx') or
+         d.LastDisassembleData.parameters.Contains('edx') or
+         d.LastDisassembleData.parameters.Contains('dx') or
+         d.LastDisassembleData.parameters.Contains('dh') or
+         d.LastDisassembleData.parameters.Contains('dl'))
+      then
+      begin
+        if usedReg='' then
+          usedreg:='rdx'
+        else
+          usedreg2:='rdx';
+      end
+      else
+      if not d.LastDisassembleData.parameters.Contains('r8') then
+      begin
+        if usedReg='' then   //impossible...
+          usedreg:='r8'
+        else
+          usedreg2:='r8';
+      end;
+
+      if d.LastDisassembleData.parameters.Contains('rsp')=false then
+      begin
+        instructioncode.add('push '+usedreg);
+        instructioncode.add('mov '+usedreg+','+addressSpecifierString);
+        instructioncode.add(d.LastDisassembleData.opcode+' '+d.LastDisassembleData.parameters.Replace(addressSpecifierString,usedreg));
+        instructioncode.add('pop '+usedreg);
+        rewritten:=true;
+      end
+      else
+      begin
+        //uses RSP: e.g: mov [address],rsp
+        if usedreg2<>'' then
+        begin
+          instructioncode.add('push '+usedreg);
+          instructioncode.add('push '+usedreg2);
+          instructioncode.add('mov '+usedreg2+',rsp');
+          instructioncode.add('add '+usedreg2+',10');
+
+          instructioncode.add('mov '+usedreg+','+addressSpecifierString);
+
+          temps:=d.LastDisassembleData.parameters.Replace(addressSpecifierString,usedreg); //mov [usedreg],rsp  (rsp=-10)
+          temps:=temps.replace('rsp',usedreg2); //mov [usedreg],usedreg2  (usedreg2=rsp+10=originalrsp)
+
+          instructioncode.add(d.LastDisassembleData.opcode+' '+temps);
+          instructioncode.add('pop '+usedreg2);
+          instructioncode.add('pop '+usedreg);
+
+          rewritten:=true;
+        end;
+      end;
+    end;
+  end
+  else  //no change needed
+    instructioncode.add(d.LastDisassembleData.opcode+' '+d.LastDisassembleData.parameters);
+
+  d.free;
+end;
+
+procedure GenerateCodeInjectionScript(script: tstrings; addressstring: string; farjmp: boolean=false; jmp1: boolean=false; originalcodeMinSize: integer=1);
 function inttostr(i:int64):string;
 begin
   if i=0 then result:='' else result:=sysutils.IntToStr(i);
 end;
 
 var
-    originalcode: array of string;
+    originalcode: tstringlist;
     originalbytes: array of byte;
     codesize: integer;
     a: ptrUint;
     br: ptruint;
+
     c: ptrUint;
     x: string;
     i,j,k: integer;
@@ -1002,7 +1298,26 @@ var
     disablepos: integer;
     enablecode: tstringlist;
     disablecode: tstringlist;
+    jmpsize: integer;
+
+    rewrite: tstringlist;
 begin
+
+  if not processhandler.is64Bit then
+    farjmp:=false;
+
+  if processhandler.SystemArchitecture=archArm then
+  begin
+    jmpsize:=16;
+  end
+  else
+  begin
+    if jmp1 then
+      jmpsize:=1
+    else
+      jmpsize:=ifthen(farjmp, 14, 5);
+  end;
+
   try
     a:=StrToQWordEx('$'+addressstring);
   except
@@ -1014,31 +1329,33 @@ begin
   injectnr:=GetNextAllocNumber(script);
 
   //disassemble the old code
-  setlength(originalcode,0);
   codesize:=0;
 
-  while codesize<5 do
+  originalcode:=tstringlist.create;
+  enablecode:=tstringlist.Create;
+  disablecode:=tstringlist.Create;
+
+  if originalcodeMinSize<jmpsize then
+    originalcodeMinSize:=jmpsize;
+
+  while codesize<originalcodeMinSize do
   begin
-    setlength(originalcode,length(originalcode)+1);
-    originalcode[length(originalcode)-1]:=disassemble(c,x);
-    i:=posex('-',originalcode[length(originalcode)-1]);
-    i:=posex('-',originalcode[length(originalcode)-1],i+1);
-    originalcode[length(originalcode)-1]:=copy(originalcode[length(originalcode)-1],i+2,length(originalcode[length(originalcode)-1]));
+    GetOriginalInstruction(c, originalcode, farjmp);
     codesize:=c-a;
   end;
 
   setlength(originalbytes,codesize);
   ReadProcessMemory(processhandle, pointer(a), @originalbytes[0], codesize, br);
 
-  enablecode:=tstringlist.Create;
-  disablecode:=tstringlist.Create;
+
   try
     with enablecode do
     begin
-      if processhandler.is64bit then
+      if (processhandler.SystemArchitecture=archX86) and processhandler.is64bit and (not farjmp) then
         add('alloc(newmem'+inttostr(injectnr)+',2048,'+addressstring+') ')
       else
         add('alloc(newmem'+inttostr(injectnr)+',2048)');
+
       add('label(returnhere'+inttostr(injectnr)+')');
       add('label(originalcode'+inttostr(injectnr)+')');
       add('label(exit'+inttostr(injectnr)+')');
@@ -1048,19 +1365,53 @@ begin
 
       add('');
       add('originalcode'+inttostr(injectnr)+':');
-      for i:=0 to length(originalcode)-1 do
+      for i:=0 to originalcode.Count-1 do
         add(originalcode[i]);
       add('');
       add('exit'+inttostr(injectnr)+':');
-      add('jmp returnhere'+inttostr(injectnr)+'');
+      if processhandler.SystemArchitecture=archArm then
+      begin
+        if processhandler.is64Bit then
+        begin
+          add('ldr r#,returnhereaddress //you have to replace # with an unused register');
+          add('br r#');
+          add('returnhereaddress:');
+          add('dq returnhere');
+        end
+        else
+          add('b returnhere');
+      end
+      else
+        add('jmp returnhere'+inttostr(injectnr)+'');
 
       add('');
       add(addressstring+':');
-      add('jmp newmem'+inttostr(injectnr)+'');
-      if codesize>5 then
+
+      if processhandler.SystemArchitecture=archArm then
       begin
-        if codesize-5>1 then
-          add('nop '+inttohex(codesize-5,1))
+        add('ldr r#,newmemaddress //you have to replace # with an unused register');
+        add('br r#');
+        add('newmemaddress:');
+        add('dq newmem');
+      end
+      else
+      begin
+
+        if jmp1 then
+          add('jmp1 newmem')
+        else
+        begin
+          if farjmp then
+            add('jmp far newmem'+inttostr(injectnr)+'')
+          else
+            add('jmp newmem'+inttostr(injectnr)+'');
+        end;
+      end;
+
+      if codesize>jmpsize then
+      begin
+        if codesize-jmpsize>1 then
+          add('nop '+inttohex(codesize-jmpsize,1))
         else
           add('nop');
       end;
@@ -1073,12 +1424,16 @@ begin
     begin
       add('dealloc(newmem'+inttostr(injectnr)+')');
       add(addressstring+':');
-      for i:=0 to length(originalcode)-1 do
-        add(originalcode[i]);
       x:='db';
       for i:=0 to length(originalbytes)-1 do
         x:=x+' '+inttohex(originalbytes[i],2);
-      add('//Alt: '+x);
+      add(x);
+
+      for i:=0 to originalcode.count-1 do
+      begin
+        add('//'+originalcode[i]);
+      end;
+
     end;
 
     getenableanddisablepos(script,enablepos,disablepos);
@@ -1110,6 +1465,7 @@ begin
   finally
     enablecode.free;
     disablecode.Free;
+    originalcode.free;
   end;
 
 end;
@@ -1119,19 +1475,32 @@ var
   a: ptruint;
   mi: TModuleInfo;
   address: string;
+  originalCodeMinSize: integer;
 begin
   if parent is TMemoryBrowser then
-    a:=TMemoryBrowser(parent).disassemblerview.SelectedAddress
+  begin
+    a:=min(TMemoryBrowser(parent).disassemblerview.SelectedAddress, TMemoryBrowser(parent).disassemblerview.SelectedAddress2);
+    originalCodeMinSize:=TMemoryBrowser(parent).disassemblerview.selectionsize;
+  end
   else
-    a:=memorybrowser.disassemblerview.SelectedAddress;
+  begin
+    a:=min(memorybrowser.disassemblerview.SelectedAddress, memorybrowser.disassemblerview.SelectedAddress2);
+    originalCodeMinSize:=memorybrowser.disassemblerview.selectionsize;
+  end;
 
   if symhandler.getmodulebyaddress(a,mi) then
     address:='"'+mi.modulename+'"+'+inttohex(a-mi.baseaddress,1)
   else
     address:=symhandler.getNameFromAddress(a);
 
+  if processhandler.is64Bit and mi5ByteJMP.checked and (FindFreeBlockForRegion(a,4096)=nil) then
+    mi14ByteJMP.Checked:=true;
+
+
   if inputquery(rsCodeInjectTemplate, rsOnWhatAddressDoYouWantTheJump, address) then
-    GenerateCodeInjectionScript(assemblescreen.lines, address);
+  begin
+    GenerateCodeInjectionScript(assemblescreen.lines, address, (ssCtrl in GetKeyShiftState) or mi14ByteJMP.checked, mi1ByteExceptionJMP.checked, originalCodeMinSize);
+  end;
 end;
 
 procedure TfrmAutoInject.Panel1Resize(Sender: TObject);
@@ -1178,52 +1547,31 @@ var
 begin
 
   getenableanddisablepos(assemblescreen.Lines,a,b);
-  if (a=-1) and (b=-1) then raise exception.create(rsCodeNeedsEnableAndDisable);
+  if (a=-1) and (b=-1) then
+  begin
+    MessageDlg(rsCodeNeedsEnableAndDisable,mtError,[mbok],0);
+    exit;
+  end;
 
   di:=TDisableInfo.create;
-  if autoassemble(assemblescreen.lines,true,true,true,false,di) and
-     autoassemble(assemblescreen.lines,true,false,true,false,di) then
-  begin
-    //add a entry with type 255
-    mainform.AddAutoAssembleScript(assemblescreen.text);
-  end
-  else showmessage(rsFailedToAddToTableNotAllCodeIsInjectable);
+  try
+    if autoassemble(assemblescreen.lines,true,true,true,false,di) and
+       autoassemble(assemblescreen.lines,true,false,true,false,di) then
+    begin
+      //add a entry with type 255
+      mainform.AddAutoAssembleScript(assemblescreen.text);
+    end
+    else showmessage(rsFailedToAddToTableNotAllCodeIsInjectable);
+
+  except
+    on e:exception do
+      MessageDlg(e.Message,mtError, [mbok],0);
+  end;
 
   di.free;
 
 end;
 
-procedure Getjumpandoverwrittenbytes(address,addressto: ptrUint; jumppart,originalcodepart: tstrings);
-//pre: jumppart and originalcodepart are declared objects
-var x,y: ptrUint;
-    z: string;
-    i: integer;
-    ab: TAssemblerBytes;
-    jumpsize: integer;
-begin
-{$ifndef standalonetrainerwithassembler}
-  Assemble('jmp '+inttohex(addressto,8),address,ab);
-  jumpsize:=length(ab);
-
-  x:=address;
-  y:=address;
-
-  while x-y<jumpsize do
-  begin
-    z:=disassemble(x);
-    z:=copy(z,pos('-',z)+1,length(z));
-    z:=copy(z,pos('-',z)+1,length(z));
-
-    originalcodepart.add(z);
-  end;
-
-  jumppart.Add('jmp '+inttohex(addressto,8));
-
-
-  for i:=jumpsize to x-y-1 do
-    jumppart.Add('nop');
-{$endif}
-end;
 
 
 procedure generateAPIHookScript(script: tstrings; address: string; addresstogoto: string; addresstostoreneworiginalfunction: string=''; nameextension:string='0'; targetself: boolean=false);
@@ -1232,6 +1580,9 @@ var originalcode: array of string;
     i,j: integer;
     codesize: integer;
     a,b,c: ptrUint;
+
+    _address: ptruint;
+    _addresstogoto: ptruint;
     br: ptruint;
     x: string;
 
@@ -1260,6 +1611,9 @@ var originalcode: array of string;
     oldsymhandler: TSymHandler;
     processhandle: THandle;
     ProcessID: DWORD;
+
+    unusedlocalreg: integer;
+    found: boolean;
 begin
   if targetself then
   begin
@@ -1306,17 +1660,62 @@ begin
 
     if processhandler.SystemArchitecture=archarm then
     begin
-      isThumbOrigin:=(a and 1)=1; //assuming that a name is used and not the real address it occurs on
-      isThumbDestination:=(b and 1)=1;
+      if processhandler.is64Bit then
+      begin
+        //aarch64
+        {
+        if the target address is within 4GB do:
+        adrp x0,page
+        add x0,offset
+        br reg
+        returnhere:
 
-      if isThumbOrigin or isThumbDestination then
-        raise exception.create('The thumb instruction set is not yet suppported');
+        else:
+        ldr reg,address
+        br reg
+        address:
+        dd address1
+        dd address2
+        returnhere:
+        }
+        _address:=a;
+        _addresstogoto:=b;
+
+        if a>b then
+        begin
+          c:=a;
+          a:=b;
+          b:=c;
+        end;
+
+        if b-a<$7ffff000 then
+        begin
+          //within 2GB
+          if _addresstogoto and $fff=0 then
+            jumpsize:=8
+          else
+            jumpsize:=12;
+        end
+        else
+        begin
+          jumpsize:=16;
+        end;
+
+      end
+      else
+      begin
+        isThumbOrigin:=(a and 1)=1; //assuming that a name is used and not the real address it occurs on
+        isThumbDestination:=(b and 1)=1;
+
+        if isThumbOrigin or isThumbDestination then
+          raise exception.create('The thumb instruction set is not yet suppported');
 
 
-      jumpsize:=8;
-      c:=ptruint(FindFreeBlockForRegion(a,2048));
-      if (c>0) and (abs(integer(c-a))<31*1024*1024) then
-        jumpsize:=4; //can be done with one instruction B <a>
+        jumpsize:=8;
+        c:=ptruint(FindFreeBlockForRegion(a,2048));
+        if (c>0) and (abs(integer(c-a))<31*1024*1024) then
+          jumpsize:=4; //can be done with one instruction B <a>
+      end;
     end
     else
     begin
@@ -1378,14 +1777,16 @@ begin
     with enablescript do
     begin
       if (processhandler.SystemArchitecture=archx86) and (not processhandler.is64bit) then
-        add('alloc(originalcall'+nameextension+',2048)')
+        add('alloc(originalcall'+nameextension+',1024)')
       else
       begin
-        add('alloc(originalcall'+nameextension+',2048,'+address+')');
-        add('alloc(jumptrampoline'+nameextension+',64,'+address+') //special jump trampoline in the current region (64-bit)');
+        add('alloc(originalcall'+nameextension+',1024,'+address+')');
 
-        if processhandler.SystemArchitecture=archx86 then
+        if processhandler.SystemArchitecture=archX86 then
+        begin
+          add('alloc(jumptrampoline'+nameextension+',64,'+address+'); //special jump trampoline in the current region (64-bit)');
           add('label(jumptrampoline'+nameextension+'address)');
+        end;
       end;
 
       add('label(returnhere'+nameextension+')');
@@ -1403,8 +1804,31 @@ begin
 
       originalcodestart:=enablescript.Count;
 
+      if (processhandler.SystemArchitecture=archArm) and processhandler.is64Bit then //find an unused register
+      begin
+        unusedlocalreg:=9;
+        found:=false;
+        while not found do
+        begin
+          found:=true;
+          for i:=0 to length(originalcode)-1 do
+          begin
+            s:=uppercase(originalcode[i]);
+            if s.Contains('X'+unusedlocalreg.ToString) or s.Contains('W'+unusedlocalreg.ToString) then
+            begin
+              found:=false;
+              break;
+            end;
+          end;
+
+          if not found then
+            inc(unusedlocalreg);
+        end;
+      end;
+
       for i:=0 to length(originalcode)-1 do
       begin
+
         {if hasAddress(originalcode[i], tempaddress, nil ) then
         begin
           if InRangeX(tempaddress, b,b+codesize) then
@@ -1460,7 +1884,19 @@ begin
       end;
 
       if processhandler.SystemArchitecture=archarm then
-        add('b returnhere'+nameextension)
+      begin
+        if processhandler.is64Bit then
+        begin
+          add('ldr x'+unusedlocalreg.tostring+',returnaddress');
+          add('br x'+unusedlocalreg.tostring);
+          add('returnaddress:');
+          add('dq returnhere');
+        end
+        else
+        begin
+          add('b returnhere'+nameextension)
+        end;
+      end
       else
         add('jmp returnhere'+nameextension);
 
@@ -1468,30 +1904,35 @@ begin
 
       if processhandler.systemarchitecture=archarm then
       begin
-        add('jumptrampoline'+nameextension+':');
-        if isThumbDestination then
+        if processhandler.is64Bit then
         begin
-          raise exception.create(rsThumbInstructionsAreNotYetImplemented);
-          if isThumbOrigin then
-          begin
-            add('thumb:b '+addresstogoto);
-          end
-          else
-          begin
-            add('bx jumptrampoline_armtothumb+1');
-            add('jumptrampoline_armtothumb:');
-            add('thumb:bl '+addresstogoto);
-            add('thumb:bx jumptrampoline_thumbtoarm');
-            add('jumptrampoline_thumbtoarm');
-            add('bx lr');
-          end;
         end
         else
-          add('b '+addresstogoto);
-
+        begin
+          add('jumptrampoline'+nameextension+':');
+          if isThumbDestination then
+          begin
+            raise exception.create(rsThumbInstructionsAreNotYetImplemented);
+            if isThumbOrigin then
+            begin
+              add('thumb:b '+addresstogoto);
+            end
+            else
+            begin
+              add('bx jumptrampoline_armtothumb+1');
+              add('jumptrampoline_armtothumb:');
+              add('thumb:bl '+addresstogoto);
+              add('thumb:bx jumptrampoline_thumbtoarm');
+              add('jumptrampoline_thumbtoarm');
+              add('bx lr');
+            end;
+          end
+          else
+            add('b '+addresstogoto);
+        end;
       end
       else
-      if processhandler.is64bit then
+      if processhandler.is64bit and (processhandler.SystemArchitecture=archX86) then
       begin
         add('jumptrampoline'+nameextension+':');
         add('jmp [jumptrampoline'+nameextension+'address]');
@@ -1505,7 +1946,31 @@ begin
 
       if processhandler.SystemArchitecture=archarm then
       begin
-        add('B jumptrampoline'+nameextension);
+        if processhandler.is64Bit then
+        begin
+          if jumpsize=8 then
+          begin
+            add('adrp x0,'+_addresstogoto.ToHexString(8));
+            add('br x0');
+          end;
+          if jumpsize=12 then
+          begin
+            add('adrp x0,'+(_addresstogoto and $fffffffffffff000).ToHexString(8));
+            add('add x0,x0,'+(_addresstogoto and $fff).ToHexString(1));
+            add('br x0');
+          end
+          else
+          begin
+            add('ldr x0,targetaddress');
+            add('br x0');
+            add('targetaddress:');
+            add('dq '+addresstogoto);
+          end;
+        end
+        else
+        begin
+          add('B jumptrampoline'+nameextension);
+        end;
       end
       else
       begin
@@ -1535,7 +2000,7 @@ begin
       begin
         add('dealloc(originalcall'+nameextension+')');
         if processhandler.is64bit then
-          add('dealloc(jumptrampoline)');
+          add('dealloc(jumptrampoline'+nameextension+')');
       end;
 
       for i:=0 to disablescript.Count-1 do
@@ -1647,7 +2112,7 @@ begin
 
     reg:=tregistry.create;
     try
-      if reg.OpenKey('\Software\Cheat Engine\Auto Assembler\',false) then
+      if reg.OpenKey('\Software\'+strCheatEngine+'\Auto Assembler\',false) then
       begin
         if reg.valueexists('Font.name') then
           assemblescreen.Font.Name:=reg.readstring('Font.name');
@@ -2144,9 +2609,6 @@ begin
 
   l.free;
 
-
-
-
 {$endif}
 end;
 
@@ -2271,6 +2733,10 @@ var
 
   fq: TFontQuality;
 begin
+  {$ifndef ONEBYTEJUMPS}
+  mi1ByteExceptionJMP.visible:=false;
+  Separator1.visible:=false;
+  {$endif}
 
 
   {$ifndef standalonetrainerwithassembler}
@@ -2278,12 +2744,9 @@ begin
   AAHighlighter:=TSynAASyn.Create(self);
   CPPHighlighter:=TSynCppSyn.create(self);
   LuaHighlighter:=TSynLuaSyn.Create(self);
-
   reloadHighlighterSettings;
 
   assembleSearch:=TSyneditSearch.Create;
-
-
 
 
   assemblescreen:=TSynEditPlus.Create(self);
@@ -2293,11 +2756,6 @@ begin
   fq:=assemblescreen.Font.Quality;
   if not (fq in [fqCleartypeNatural, fqDefault]) then
     assemblescreen.Font.quality:=fqDefault;
-
- { if overridefont<>nil then
-    assemblescreen.Font.assign(overridefont)
-  else
-    assemblescreen.Font.Size:=10;    }
 
   //assemblescreen.Font.Quality:=fqDefault;
   assemblescreen.WantTabs:=true;
@@ -2338,7 +2796,7 @@ begin
 
   reg:=tregistry.create;
   try
-    if reg.OpenKey('\Software\Cheat Engine\Auto Assembler\',false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Auto Assembler\',false) then
     begin
       if reg.valueexists('Show Line Numbers') then
         assemblescreen.Gutter.linenumberpart.visible:=reg.ReadBool('Show Line Numbers');
@@ -2381,8 +2839,27 @@ begin
   load1.Shortcut:=TextToShortCut('Meta+O');
   save1.Shortcut:=TextToShortCut('Meta+S');
 
-  i:=assemblescreen.Keystrokes.FindCommand(ecSelectAll);
-  if i<>-1 then assemblescreen.Keystrokes[i].ShortCut:=TextToShortCut('Meta+A');
+  if assemblescreen<>nil then
+  begin
+    i:=assemblescreen.Keystrokes.FindCommand(ecSelectAll);
+    if i<>-1 then assemblescreen.Keystrokes[i].ShortCut:=TextToShortCut('Meta+A');
+
+    i:=assemblescreen.Keystrokes.FindCommand(ecLineStart);
+    if i<>-1 then assemblescreen.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Left');
+
+    i:=assemblescreen.Keystrokes.FindCommand(ecLineEnd);
+    if i<>-1 then assemblescreen.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Right');
+
+    i:=assemblescreen.Keystrokes.FindCommand(ecEditorTop);
+    if i<>-1 then assemblescreen.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Up');
+
+    i:=assemblescreen.Keystrokes.FindCommand(ecEditorBottom);
+    if i<>-1 then assemblescreen.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Down');
+
+  end;
+
+  if processhandler.SystemArchitecture=archArm then emplate1.visible:=false;
+
 {$endif}
 
 end;
@@ -2668,7 +3145,7 @@ begin
         //save these settings
         reg:=tregistry.create;
         try
-          if reg.OpenKey('\Software\Cheat Engine\Auto Assembler\',true) then
+          if reg.OpenKey('\Software\'+strCheatEngine+'\Auto Assembler\',true) then
           begin
             reg.WriteString('Font.name', assemblescreen.Font.Name);
             reg.WriteInteger('Font.size', assemblescreen.Font.size);
@@ -2844,9 +3321,9 @@ begin
 end;
 
 // \/   http://forum.cheatengine.org/viewtopic.php?t=566415 (jgoemat and some mods by db)
-procedure GenerateFullInjectionScript(Script: tstrings; address: string; commentRadius: integer=10);
+procedure GenerateFullInjectionScript(Script: tstrings; address: string; commentRadius: integer=10; farjmp: boolean=false; jmp1:boolean=false; originalcodeMinSize: integer=1);
 var
-  originalcode: array of string;
+  originalcode: tstringlist;
   originalbytes: array of byte;
   codesize: integer;
   a: ptrUint;
@@ -2879,7 +3356,15 @@ var
   ddBytes: string;
 
   mi: TModuleInfo;
+  jmpsize: integer;
 begin
+  if not processhandler.is64Bit then
+    farjmp:=false;
+
+  if jmp1 then
+    jmpsize:=1
+  else
+    jmpsize:=ifthen(farjmp, 14, 5);
 
   try
     a:=StrToQWordEx('$'+address);
@@ -2898,16 +3383,15 @@ begin
 
   // disassemble the old code, simply for putting original code in the script
   // and for the bytes we assert must be there and will replace
-  setlength(originalcode,0);
+  originalcode:=tstringlist.create;
   codesize:=0;
 
-  while codesize<5 do
+  if originalcodeMinSize<jmpsize then
+    originalcodeMinSize:=jmpsize;
+
+  while codesize<originalcodeMinSize do
   begin
-    setlength(originalcode,length(originalcode)+1);
-    originalcode[length(originalcode)-1]:=disassemble(c,x);
-    i:=posex('-',originalcode[length(originalcode)-1]);
-    i:=posex('-',originalcode[length(originalcode)-1],i+1);
-    originalcode[length(originalcode)-1]:=copy(originalcode[length(originalcode)-1],i+2,length(originalcode[length(originalcode)-1]));
+    GetOriginalInstruction(c, originalcode, farjmp);
     codesize:=c-a;
   end;
 
@@ -2959,7 +3443,7 @@ begin
     with enablecode do
     begin
       add('assert(address'+nr+',bytes'+nr+')');
-      if processhandler.is64bit then
+      if processhandler.is64bit and (not farjmp) then
         add('alloc(newmem' + nr + ',$1000,' + address + ')')
       else
         add('alloc(newmem' + nr + ',$1000)');
@@ -2971,17 +3455,26 @@ begin
 
       add('');
       add('code'+nr+':');
-      for i:=0 to length(originalcode)-1 do
+      for i:=0 to originalcode.count-1 do
         add('  '+originalcode[i]);
       add('  jmp return'+nr+'');
 
       add('');
       add('address'+nr+':');
-      add('  jmp newmem'+nr+'');
-      if codesize>5 then
+      if jmp1 then
+        add('  jmp1 newmem')
+      else
       begin
-        if codesize-5>1 then
-          add('  nop '+inttohex(codesize-5,1))
+        if farjmp then
+          add('  jmp far newmem'+nr+'')
+        else
+          add('  jmp newmem'+nr+'');
+      end;
+
+      if codesize>jmpsize then
+      begin
+        if codesize-jmpsize>1 then
+          add('  nop '+inttohex(codesize-jmpsize,1))
         else
           add('  nop');
       end;
@@ -2994,7 +3487,7 @@ begin
     begin
       add('address'+nr+':');
       add('  db bytes'+nr);
-      for i:=0 to length(originalcode)-1 do
+      for i:=0 to originalcode.count-1 do
         add('  // ' + originalcode[i]);
       add('');
       add('dealloc(newmem'+nr+')');
@@ -3044,6 +3537,8 @@ begin
     bytesList.Free;
     codeList.Free;
     dline.free;
+
+    originalcode.free;
   end;
 
 
@@ -3055,19 +3550,19 @@ var
   address: string;
   mi: TModuleInfo;
 begin
-  a:=memorybrowser.disassemblerview.SelectedAddress;
+  a:=min(memorybrowser.disassemblerview.SelectedAddress, memorybrowser.disassemblerview.SelectedAddress2);
 
   if symhandler.getmodulebyaddress(a,mi) then
     address:='"'+mi.modulename+'"+'+inttohex(a-mi.baseaddress,1)
   else
     address:=inttohex(a,8);
 
+  if processhandler.is64Bit and mi5ByteJMP.checked and (FindFreeBlockForRegion(a,4096)=nil) then
+    mi14ByteJMP.Checked:=true;
+
   if inputquery(rsCodeInjectTemplate, rsOnWhatAddressDoYouWantTheJump, address) then
-    generateFullInjectionScript(assemblescreen.Lines, address);
+    generateFullInjectionScript(assemblescreen.Lines, address, 10, (ssCtrl in GetKeyShiftState) or mi14ByteJMP.checked, mi1ByteExceptionJMP.checked, memorybrowser.disassemblerview.SelectionSize);
 end;
-
-
-
 
 procedure TfrmAutoInject.miReplaceClick(Sender: TObject);
 begin
@@ -3076,9 +3571,9 @@ end;
 
 procedure TfrmAutoInject.reloadHighlighterSettings;
 begin
-  LuaHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter'+darkmodestring);
-  AAHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\AA Highlighter'+darkmodestring);
-  CPPHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\CPP Highlighter'+darkmodestring);
+  LuaHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
+  AAHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\AA Highlighter'+darkmodestring);
+  CPPHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\CPP Highlighter'+darkmodestring);
 end;
 
 procedure TfrmAutoInject.MenuItem2Click(Sender: TObject);
@@ -3086,11 +3581,11 @@ var
   frmHighlighterEditor: TfrmHighlighterEditor;
 begin
   frmHighlighterEditor:=TfrmHighlighterEditor.create(self);
-  LuaHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter'+darkmodestring);
+  LuaHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
   frmHighlighterEditor.highlighter:=LuaHighlighter;
   if frmHighlighterEditor.showmodal=mrok then
   begin
-    LuaHighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter'+darkmodestring);
+    LuaHighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
     reloadHighlighterSettings;
     ReloadAllLuaEngineHighlighters;
   end;
@@ -3104,11 +3599,11 @@ var
   frmHighlighterEditor: TfrmHighlighterEditor;
 begin
   frmHighlighterEditor:=TfrmHighlighterEditor.create(self);
-  AAHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\AA Highlighter'+darkmodestring);
+  AAHighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\AA Highlighter'+darkmodestring);
   frmHighlighterEditor.highlighter:=AAHighlighter;
   if frmHighlighterEditor.showmodal=mrok then
   begin
-    AAHighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\AA Highlighter'+darkmodestring);
+    AAHighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\AA Highlighter'+darkmodestring);
     ReloadAllAutoInjectHighlighters;
   end;
 
@@ -3120,22 +3615,37 @@ var
   frmHighlighterEditor: TfrmHighlighterEditor;
 begin
   frmHighlighterEditor:=TfrmHighlighterEditor.create(self);
-  CPPHighlighter.loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\Cheat Engine\CPP Highlighter'+darkmodestring);
+  CPPHighlighter.loadFromRegistryDefault(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\CPP Highlighter'+darkmodestring);
 
   frmHighlighterEditor.highlighter:=CPPHighlighter;
   if frmHighlighterEditor.showmodal=mrok then
   begin
-    CPPHighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\CPP Highlighter'+darkmodestring);
+    CPPHighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\CPP Highlighter'+darkmodestring);
     ReloadAllAutoInjectHighlighters;
   end;
 
   frmHighlighterEditor.free;
 end;
 
-procedure GenerateAOBInjectionScript(script: TStrings; address: string; symbolname: string; commentradius: integer=10);
+procedure TfrmAutoInject.mi1ByteExceptionJMPClick(Sender: TObject);
+begin
+  if mi1ByteExceptionJMP.checked then
+  begin
+    mi5ByteJMP.Caption:=rsLessThan2GBDistance;
+    mi14ByteJMP.Caption:=rsMoreThan2GBDistance;
+  end
+  else
+  begin
+    mi5ByteJMP.Caption:=rs5ByteJMP;
+    mi14ByteJMP.Caption:=rs14ByteJMP;
+  end;
+
+end;
+
+procedure GenerateAOBInjectionScript(script: TStrings; address: string; symbolname: string; commentradius: integer=10; farjmp: boolean=false; jmp1:boolean=false; originalcodeMinSize: integer=1);
 var
   a,a2: ptrUint;                  // pointer to injection point
-  originalcode: array of string;  // disassembled code we're replacing
+  originalcode: tstringlist;      // disassembled code we're replacing
   originalbytes: array of byte;   // bytes we're replacing
   codesize: integer;              // # of bytes we're replacing
   aobString: string;              // hex bytes we're replacing
@@ -3173,8 +3683,17 @@ var
   resultAOB: String;
   resultOffset: Integer;
   symbolNameWithOffset: String;
+  jmpsize: integer;
 begin
-  // now heavily modified code from "Code injection" menu
+  if not processhandler.is64Bit then
+    farjmp:=false;
+
+
+  if jmp1 then
+    jmpsize:=1
+  else
+    jmpsize:=ifthen(farjmp, 14, 5);
+
 
   try
     a:=StrToQWordEx('$'+address);
@@ -3192,16 +3711,15 @@ begin
 
   // disassemble the old code, simply for putting original code in the script
   // and for the bytes we assert must be there and will replace
-  setlength(originalcode,0);
+  originalcode:=tstringlist.create;
   codesize:=0;
 
-  while codesize<5 do
+  if originalcodeMinSize<jmpsize then
+    originalcodeMinSize:=jmpsize;
+
+  while codesize<originalcodeMinSize do
   begin
-    setlength(originalcode,length(originalcode)+1);
-    originalcode[length(originalcode)-1]:=disassemble(c,x);
-    i:=posex('-',originalcode[length(originalcode)-1]);
-    i:=posex('-',originalcode[length(originalcode)-1],i+1);
-    originalcode[length(originalcode)-1]:=copy(originalcode[length(originalcode)-1],i+2,length(originalcode[length(originalcode)-1]));
+    GetOriginalInstruction(c, originalcode, farjmp);
     codesize:=c-a;
   end;
 
@@ -3258,7 +3776,7 @@ begin
       else
         add('aobscan(' + symbolName + ',' + resultAOB + ') // should be unique');
 
-      if processhandler.is64bit then
+      if processhandler.is64bit and (not farjmp) then
         add('alloc(newmem' + nr + ',$1000,' + symbolname + ')')
       else
         add('alloc(newmem' + nr + ',$1000)');
@@ -3270,17 +3788,26 @@ begin
 
       add('');
       add('code' + nr + ':');
-      for i:=0 to length(originalcode) - 1 do
+      for i:=0 to originalcode.count - 1 do
         add('  ' + originalcode[i]);
       add('  jmp return'+nr+'');
 
       add('');
       add(symbolNameWithOffset + ':');
-      add('  jmp newmem' + nr + '');
-      if codesize>5 then
+      if jmp1 then
+        add('  jmp1 newmem')
+      else
       begin
-        if codesize-5>1 then
-          add('  nop '+inttohex(codesize-5,1))
+        if farjmp then
+          add('  jmp far newmem' + nr + '')
+        else
+          add('  jmp newmem' + nr + '');
+      end;
+
+      if codesize>jmpsize then
+      begin
+        if codesize-jmpsize>1 then
+          add('  nop '+inttohex(codesize-jmpsize,1))
         else
           add('  nop');
       end;
@@ -3360,12 +3887,16 @@ var
   mi: TModuleInfo;
   symbolname: string;
 begin
-  a:=memorybrowser.disassemblerview.SelectedAddress;
+  a:=min(memorybrowser.disassemblerview.SelectedAddress, memorybrowser.disassemblerview.SelectedAddress2);
 
   if symhandler.getmodulebyaddress(a,mi) then
     address:='"'+mi.modulename+'"+'+inttohex(a-mi.baseaddress,1)
   else
     address:=inttohex(a,8);
+
+  if processhandler.is64Bit and mi5ByteJMP.checked and (FindFreeBlockForRegion(a,4096)=nil) then
+    mi14ByteJMP.Checked:=true;
+
 
   if inputquery(rsCodeInjectTemplate, rsOnWhatAddressDoYouWantTheJump, address) then
   begin
@@ -3375,7 +3906,7 @@ begin
     symbolname:='INJECT'+nr;
 
     if inputquery(rsCodeInjectTemplate, rsWhatIdentifierDoYouWantToUse, symbolName) then
-      GenerateAOBInjectionScript(assemblescreen.Lines, address, symbolname);
+      GenerateAOBInjectionScript(assemblescreen.Lines, address, symbolname, 10, (ssCtrl in GetKeyShiftState) or mi14ByteJMP.checked, mi1ByteExceptionJMP.checked, memorybrowser.disassemblerview.SelectionSize);
   end;
 end;
 
@@ -3655,6 +4186,7 @@ var
   mask : Boolean;
   count : Integer;
 begin
+  result:=[];
   setlength(result, size);
 
 

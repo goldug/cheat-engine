@@ -32,6 +32,8 @@ DOTNETCMD_WRAPOBJECT=8
 DOTNETCMD_UNWRAPOBJECT=9
 DOTNETCMD_INVOKEMETHOD=10
 
+DOTNETCMD_FIND_MODULEID_WITH_CLASSLIST=11
+
 
 DOTNETCMD_EXIT=255
 
@@ -39,7 +41,7 @@ DOTNETCMD_EXIT=255
 dotnetmodulelist={}
 
 function dotnet_findDotNetMethodAddress(namespace, classname, methodname, modulename)
-  print(string.format("dotnet_findDotNetMethodAddress('%s','%s','%s','%s')",namespace,classname, methodname, modulename))
+  --print(string.format("dotnet_findDotNetMethodAddress('%s','%s','%s','%s')",namespace,classname, methodname, modulename))
 
   local fcn
 
@@ -79,14 +81,14 @@ function dotnet_findDotNetMethodAddress(namespace, classname, methodname, module
             local l
             for l=1,#ml do
               if ml[l].Name==methodname then
-                print("Found method. Calling dotnet_getMethodEntryPoint")
+                --print("Found method. Calling dotnet_getMethodEntryPoint")
                 local r=dotnet_getMethodEntryPoint(dotnet_getModuleID(extractFileName(modules[j].Name)), ml[l].MethodToken)
                 
                 if r then
-                  printf("%s at address %8x", methodname, r)
+                  --printf("%s at address %8x", methodname, r)
                   return r
                 else
-                  print("failure")
+                  --print("failure")
                 end
               end
             end
@@ -134,12 +136,19 @@ function dotnet_initModuleList()
   for i=1,count do
     local stringsize=dotnetpipe.readDword()
     local s=dotnetpipe.readString(stringsize)
+
+    stringsize=dotnetpipe.readDword()
+    local s2=dotnetpipe.readString(stringsize)    
     
+    stringsize=dotnetpipe.readDword()
+    local s3=dotnetpipe.readString(stringsize)    
     
     dotnetmodulelist[i]={}
     dotnetmodulelist[i].Name=s
-    dotnetmodulelist[i].Index=i
-    dotnetmodulelist[s]=dotnetmodulelist[i]
+    dotnetmodulelist[i].ScopeName=s2
+    dotnetmodulelist[i].GUID=s3
+    dotnetmodulelist[i].Index=i    
+    dotnetmodulelist[s]=dotnetmodulelist[i] --so the list can get searched by both numeric as string
   end
   dotnetpipe.unlock()
 end
@@ -422,7 +431,8 @@ function dotnet_invoke_method(moduleid, methoddef, wrappedObjectHandle, paramete
   return result
 end
 
-function dotnet_invoke_method_dialog(name, moduleid, methoddef, wrappedAddress)
+function dotnet_invoke_method_dialog(name, moduleid, methoddef, wrappedAddress) 
+  
   if wrappedAddress==nil then
     return nil,'no wrapped object address provided'
   end
@@ -496,6 +506,40 @@ function dotnet_invoke_method_dialog(name, moduleid, methoddef, wrappedAddress)
   return mifinfo
 end
 
+function dotnet_getModuleIDFromClassList(modulename, classnamelist)
+  --scans for modules that contain all the given classnames. 
+  --when found, apply to the dotnetmodulelist so it doesn't need to be found anymore
+ -- print("dotnet_getModuleIDFromClassList.  #classnamelist="..#classnamelist);
+  
+  if (classnamelist==nil) or (#classnamelist==0) then 
+    print("empty classlist")
+    return nil    
+  end
+  local result=0xffff
+  if dotnetpipe then
+    dotnetpipe.lock()
+    dotnetpipe.writeByte(DOTNETCMD_FIND_MODULEID_WITH_CLASSLIST)
+    dotnetpipe.writeByte(#classnamelist)
+    for i=1,#classnamelist do    
+      local s=classnamelist[i]
+      dotnetpipe.writeDword(#s);
+      dotnetpipe.writeString(classnamelist[i])
+    end
+    
+    
+    result=dotnetpipe.readWord()    
+    dotnetpipe.unlock()
+  end
+  
+  if result==0xffff then
+    print("DOTNETCMD_FIND_MODULEID_WITH_CLASSLIST failed");
+    return nil
+  else
+    --dotnetmodulelist[modulename]=dotnetmodulelist[result+1]
+    return result
+  end
+end
+
 
 function dotnet_getModuleID(modulename)
   if dotnetmodulelist==nil then
@@ -507,6 +551,27 @@ function dotnet_getModuleID(modulename)
   local m=dotnetmodulelist[modulename] 
   if m then
     return m.Index-1
+  else  
+    --try the scopenames extension
+    --printf("dotnet_getModuleID(%s): Try alternate method", modulename)
+
+    for i=1,#dotnetmodulelist do
+      if dotnetmodulelist[i].ScopeName==modulename then
+        return i-1
+      end
+    
+      if extractFileNameWithoutExt(dotnetmodulelist[i].ScopeName)==modulename then
+        return i-1
+      end
+      
+      if extractFileNameWithoutExt(modulename)==dotnetmodulelist[i].ScopeName then
+        return i-1
+      end  
+
+
+      
+    end
+    print("not found")
   end
 end
 
@@ -572,8 +637,8 @@ function LaunchDotNetInterface()
   
   
   dotnetpipe.OnError=function(self)
-    print("dotnetpipe error")
-    print(debug.traceback())    
+   -- print("dotnetpipe error")
+  --  print(debug.traceback())    
     dotnetpipe=nil
   end 
 

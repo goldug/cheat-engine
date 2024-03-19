@@ -1,66 +1,31 @@
 Additions and changes:
-  Added dark mode support (restart CE when you channge the setting)
-  Hotkeys can be repeated by releasing the key and repressing if the repeat timer hasn't finished yet
-  structure dissect add to addresslist uses the addressstring instead of number, so symbols will be preserved
-  structure dissect now has a option to save the previous state of a column and show changes easier
-  Added {$LUACODE} blocks for inline Lua coding
-  Added a c-compiler to CE (compile)
-  Added {$C} blocks to the auto assembler. all {$C} blocks get combined into one script before execution
-  Added {$CCODE} blocks for inline C coding (Check the forum, wiki, CE patreon discord or CE's youtube)
-  Added a C# compiler (compilecs)
-  Added routines to do .NET(and mono) method detouring.  .NET info has a new contextmenu where you can create a detour template for the autoassembler
-  Added invoke method to the .NET Info window as well
-  [Disable] sections can now reference labels, defines, AOBScan results, and allocs created in the [ENABLE] section
-  Userdefined symbollist has a secondary list for CCode symbols
-  The change address window now also supports relative offsets
-  DBVM speed improvements
-  DBVM has an extra security level, and added dbvm_setKeys to easily change the access codes
-  New debugger interface: DBVM-level debugger
-  Improved performance of "Find what access/writes this address"
-  Dissect code now lets you specify custom ranges
-  Addresslist value sort now sorts values by alphabet if the record is a string type
-  The dropdown list of multiple entries can now be changed at the same time
 
-  
+from 7.5 to 7.5.1:
+No more version numbering in the main caption. Only the about screen now has it
+can run without admin and asks for admin if needed (you can set to run as admin in settings as well)
+better error reporting (Especially if using the debugsymbol version)
+symbol synchronization.  Symbols are shared between CE instances and remembered when reopening CE
+Speedhack v3 now replaces the old speedhack in windows. No more speedhack dll's to inject (more dll's to follow in the future)
+byteTableToxxx now support an start index
+autoassembler command AOBSCANEX - Scan only executable memory
+c compiler: added __stdcall define
+c compiler: windows: auto assembler can deal with stdcall mangled symbols names, and c compiler can deal with unmangled symbols when stdcall is used
+c compiler: header files are used as table files. And tablefiles can have any name now
+added Java info similar to .net/mono info
+improved the .net info classlist performance (especially noticable in ceserver)
+ctrl+space on selected bytes in hexview will make the disassembler go there
+bunch of mono info improvements
+lua: treenode.Index is now writable
+redesigned the internals of structure dissect. Expect many new bugs there, please report! (I already know a few of them, but just waiting to get a report on them before fixing ;-) )
+
+
 
 Fixes:
-  fixed some games freezing CE when symbols where accesses
-  Lua debug now shows for loop variables
-  several windows now save their position, and won't get corrupted if you don't show them the first time running CE
-  fixed createthreadandwait when using a timeout
-  fixed disassembling vcvtsi2ss
-  fixed compare to first scan if it's a large block, and made it more efficient
-  ceshare: logout fixed
-  fixed assembling movsq
-  fixed ultimap ret filter
-  fixed luapipe never calling OnError
-  fixed DBVM find what access/writes sometimes skipping entries on AMD
-  fixed undo not working on memory records when using the single line editor
-
-lua:
-  changes:
-    saveTable won't ask to sign the table anymore
-    messageDialog will work if you omit the buttonlist. (Defaults to mbOK then)
-    added more customizabe button
-
-  New functions:
-     form.saveToStream 
-     compile()
-     compilecs()
-
-
-
-
-How to use:
-There's a tutorial program included with Cheat Engine,
-it teaches how to use the basics of Cheat Engine, also the helpfile may be of use.
-
-
-
-For comments or suggestions and such, contact me at:
-e-mail(msn) = dark_byte@hotmail.com
-
-
-For more information about Cheat Engine or tables for it 
-and other things, go to this url:
-http://www.cheatengine.org/
+from 7.5 to 7.5.1:
+Loooots of fixes in ceserver from symbollookup to debugging, pipes, basic initialization going wrong, etc...
+fixed symbol to address lookup picking an old version of a same named symbol instead of later (was an issue with symbollists, like ccode)
+fixed an error with .net/mono info giving an error when looking at a string
+fixed disassembling of some vector instructions
+fixed VEX instructions not working in 32-bit targets
+fixed the translation files not being up to date in the installer
+dissectcode high dpi fix

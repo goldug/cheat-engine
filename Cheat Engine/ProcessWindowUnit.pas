@@ -14,7 +14,7 @@ uses
   LCLIntf, Messages, SysUtils, Classes, Graphics, Controls,
   Forms, Dialogs, StdCtrls, ExtCtrls, CEFuncProc,CEDebugger, ComCtrls, ImgList,
   Filehandler, Menus, LResources,{tlhelp32,}{$ifdef windows}vmxfunctions,{$endif} NewKernelHandler,
-  debugHelper{, KIcon}, commonTypeDefs, math, syncobjs, Contnrs, betterControls;
+  debugHelper{, KIcon}, commonTypeDefs, math,lcltype, syncobjs, Contnrs, betterControls;
 
 type
   TProcesslistlong = class(tthread)
@@ -162,8 +162,10 @@ implementation
 
 
 uses MainUnit, formsettingsunit, advancedoptionsunit,frmProcessWatcherUnit,
-  memorybrowserformunit{$ifdef windows}, networkConfig{$endif}, ProcessHandlerUnit, processlist, globals,
-  registry, fontSaveLoadRegistry, frmOpenFileAsProcessDialogUnit;
+  memorybrowserformunit, networkConfig, ProcessHandlerUnit, processlist, globals,
+  registry, fontSaveLoadRegistry, frmOpenFileAsProcessDialogUnit,
+  networkInterfaceApi, MainUnit2, DebuggerInterfaceAPIWrapper, gdbserverconnectdialog,
+  GDBServerDebuggerInterface, plugin;
 
 resourcestring
   rsIsnTAValidProcessID = '%s isn''t a valid processID';
@@ -243,6 +245,7 @@ var
   e: PIconFetchEntry;
   pid: dword;
 begin
+  NameThreadForDebugging('TIconFetchThread', ThreadID);
   while not terminated do
   begin
     wr:=hasdata.WaitFor(1000);
@@ -482,7 +485,9 @@ end;
 procedure TProcessWindow.filterlist;
 var
     i:integer;
+{$IFDEF WINDOWS}
     pli: PProcessListInfo;
+{$ENDIF}
     s: string;
 begin
   if (filter='') and (commonProcessesList=nil) then exit;
@@ -492,10 +497,13 @@ begin
   i:=0;
   while i<processlist.Items.Count do
   begin
+    {$IFDEF WINDOWS}
     pli:=PProcessListInfo(processlist.items.Objects[i]);
+    {$ENDIF}
 
     if ((ffilter<>'') and (pos(ffilter,uppercase(processlist.Items[i]))=0)) or isInCommonProcessesList(processlist.Items[i]) then
     begin
+      {$IFDEF WINDOWS}
       if pli<>nil then
       begin
         if pli^.processIcon>0 then
@@ -508,6 +516,7 @@ begin
 
         freememandnil(pli);
       end;
+      {$ENDIF}
 
       processlist.Items.Delete(i);
     end
@@ -583,6 +592,8 @@ begin
   tsWindows.Visible:=false;
   {$endif}
 
+
+
   {$ifdef windows}
   IconFetchThread:=TIconFetchThread.create;
   {$endif}
@@ -608,7 +619,7 @@ begin
 
   reg:=tregistry.create;
   try
-    if reg.OpenKey('\Software\Cheat Engine\Process Window\Font'+darkmodestring,false) then
+    if reg.OpenKey('\Software\'+strCheatEngine+'\Process Window\Font'+darkmodestring,false) then
       LoadFontFromRegistry(processlist.Font, reg)
     else
       processlist.font.color:=colorset.FontColor;
@@ -617,6 +628,9 @@ begin
   finally
     reg.free;
   end;
+
+  if formSettings.cbUseGDBServer.checked then
+    btnNetwork.Caption:='Connect to GDB';
 
 end;
 
@@ -656,7 +670,7 @@ begin
 
     reg:=tregistry.create;
     try
-      if reg.OpenKey('\Software\Cheat Engine\Process Window\Font'+darkmodestring,true) then
+      if reg.OpenKey('\Software\'+strCheatEngine+'\Process Window\Font'+darkmodestring,true) then
         SaveFontToRegistry(FontDialog1.Font, reg);
 
 
@@ -678,19 +692,83 @@ begin
 end;
 
 procedure TProcessWindow.btnNetworkClick(Sender: TObject);
+var
+  host: string;
+  port: word;
 begin
-  {$ifdef windows}
-  if frmNetworkConfig=nil then
-    frmNetworkConfig:=tfrmNetworkConfig.create(self);
-
-  if frmNetworkConfig.ShowModal=mrok then
+  if formsettings.cbUseGDBServer.checked then
   begin
-    if TabHeader.TabIndex=1 then
-      refreshlist
+    if MessageDlg('Connecting to GDB using this option instead of attaching the debugger to the native process will force the use of GDB read and write memory functions which is a lot slower, and you will not have access to local symbol info and some other tools you may be used to.  Are you sure?', mtWarning, [mbyes, mbno],0)<>mryes then exit;
+
+    GDBReadProcessMemory:=true;
+    GDBWriteProcessMemory:=true;
+    SkipVirtualProtectEx:=true;
+
+    outputdebugstring('Using GDBServer debugger interface');
+    if CurrentDebuggerInterface<>nil then
+      freeandnil(CurrentDebuggerInterface);
+
+    if formsettings.cbLaunchGDBServer.Checked then
+    begin
+      port:=strtoint(formsettings.edtGDBPort.Text);
+      CurrentDebuggerInterface:=TGDBServerDebuggerInterface.createAndConnect(formsettings.edtGDBServerCommand.Text, 'localhost', port);
+    end
     else
-      TabHeader.Tabindex:=1;
+    begin
+      //spawn a dialog asking
+      if getGDBHostAndPort(host, port) then
+        CurrentDebuggerInterface:=TGDBServerDebuggerInterface.connectToExistingServer(host,port);
+    end;
+
+    if CurrentDebuggerInterface<>nil then
+    begin
+      tabheader.ShowTabs:=false;
+      TabHeaderResize(nil);
+
+      if TabHeader.TabIndex<>1 then
+        TabHeader.Tabindex:=1;
+
+      refreshlist;
+      processlist.SetFocus;
+
+      btnAttachDebugger.Visible:=false;
+
+      if processlist.Count=0 then
+      begin
+        //this is a processless system
+        MainForm.ProcessLabel.caption:='Remote System';
+        processhandler.processid:=$FFFFFFFE;
+        processhandler.processhandle:=-2;
+
+        startdebuggerifneeded(false);
+
+
+        onAPIPointerChange:=TGDBServerDebuggerInterface(currentdebuggerinterface).OnApiPointerChange;
+        onAPIPointerChange(nil);
+
+        modalresult:=mrok;
+      end;
+
+    end;
+  end
+  else
+  begin
+    if frmNetworkConfig=nil then
+      frmNetworkConfig:=tfrmNetworkConfig.create(self);
+
+    if frmNetworkConfig.ShowModal=mrok then
+    begin
+      tabheader.ShowTabs:=false;
+      TabHeaderResize(nil);
+
+      if TabHeader.TabIndex<>1 then
+        TabHeader.Tabindex:=1;
+
+      refreshlist;
+      processlist.SetFocus;
+    end;
+
   end;
-  {$endif}
 end;
 
 procedure TProcessWindow.Button1Click(Sender: TObject);
@@ -710,17 +788,7 @@ begin
   val('$'+ProcessIDString,ProcessHandler.processid,i);
   if i<>0 then raise exception.Create(Format(rsIsnTAValidProcessID, [processidstring]));
   if Processhandle<>0 then
-  begin
-    if (processhandle<>0) and (processhandle<>INVALID_HANDLE_VALUE) and (processhandle<>$FFFFFFFF) then
-    begin
-      try
-        CloseHandle(ProcessHandle);
-      except
-      end;
-    end;
-
     ProcessHandler.ProcessHandle:=0;
-  end;
 
   with mainform do
   begin
@@ -757,7 +825,28 @@ begin
   end;
   {$endif}
 
-  Open_Process;
+  if (CurrentDebuggerInterface<>nil) and (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then
+  begin
+    //use the currently selected processid for startdebuggerifneeded (for the vAttach packet)
+    processhandler.processhandle:=-2;
+    startdebuggerifneeded(false);
+
+    onAPIPointerChange:=TGDBServerDebuggerInterface(currentdebuggerinterface).OnApiPointerChange;
+    onAPIPointerChange(nil);
+
+    processhandler.processid:=$fffffffe;  //the processid is not needed anymore
+
+  end
+  else
+    Open_Process;
+
+  if ProcessHandle=0 then
+  begin
+    if not runningAsAdmin then
+    begin
+      raise exception.Create('Failed opening process. Likely due to lack of admin rights');
+    end;
+  end;
 
   ProcessSelected:=true;
 
@@ -784,26 +873,32 @@ end;
 procedure TProcessWindow.OKButtonClick(Sender: TObject);
 var ProcessIDString: String; 
 begin
-  //Outputdebugstring('OK button click');
-  if Processlist.ItemIndex>-1 then
-  begin
-    unpause;
-    DetachIfPossible;
+  try
+    Outputdebugstring('OK button click');
+    if Processlist.ItemIndex>-1 then
+    begin
+      unpause;
+      DetachIfPossible;
 
-    ProcessIDString:=copy(ProcessList.Items[Processlist.ItemIndex], 1, pos('-',ProcessList.Items[Processlist.ItemIndex])-1);
+      ProcessIDString:=copy(ProcessList.Items[Processlist.ItemIndex], 1, pos('-',ProcessList.Items[Processlist.ItemIndex])-1);
 
-    PWOP(ProcessIDString);
+      Outputdebugstring('calling PWOP');
+      PWOP(ProcessIDString);
 
 
+      if TabHeader.TabIndex=0 then
+        MainForm.ProcessLabel.caption:=ProcessIDString+'-'+extractfilename(getProcessPathFromProcessID(processid))
+      else
+        MainForm.ProcessLabel.caption:=ProcessList.Items[Processlist.ItemIndex];
+      Modalresult:=MROK;
+      //ProcessWindow.close;
+    end;
 
-    if TabHeader.TabIndex=0 then
-      MainForm.ProcessLabel.caption:=ProcessIDString+'-'+extractfilename(getProcessPathFromProcessID(processid))
-    else
-      MainForm.ProcessLabel.caption:=ProcessList.Items[Processlist.ItemIndex];
-    Modalresult:=MROK;
-    //ProcessWindow.close;
+
+  except
+    on e: exception do
+      MessageDlg(e.Message,mtError,[mbok],0);
   end;
-
   //outputdebugstring('After ok click handler');
 end;
 
@@ -857,6 +952,8 @@ procedure TProcessWindow.btnAttachDebuggerClick(Sender: TObject);
 var ProcessIDString: String;
     i:               Integer;
     oldpid,newpid: dword;
+
+    starttime: qword;
 begin
   oldpid:=processid;
 
@@ -864,6 +961,7 @@ begin
   begin
     if MessageDlg(rsAttachdebuggerornot, mtConfirmation, [mbyes, mbno], 0)=mryes then
     begin
+
       unpause;
       DetachIfPossible;
 
@@ -886,7 +984,9 @@ begin
       try
         if processid=GetCurrentProcessId then raise exception.create(rsPleaseSelectAnotherProcess);
 
+        starttime:=GetTickCount64;
         Debuggerthread:=TDebuggerThread.MyCreate2(newpid);
+
       except
         on e: exception do
         begin
@@ -895,6 +995,8 @@ begin
           exit;
         end;
       end;
+
+      OutputDebugString('Debugger attach time='+(GetTickCount64-starttime).ToString);
 
       mainform.ProcessLabel.Caption:=ProcessList.Items[Processlist.ItemIndex];
 
@@ -1025,7 +1127,9 @@ var
 
   pids: string;
   pid: dword;
+  {$IFDEF WINDOWS}
   pli: PProcessListInfo;
+  {$ENDIF}
 begin
   wantedheight:=ProcessList.canvas.TextHeight('QqJjWwSs')+3;
   {i:=ProcessList.canvas.TextHeight('QqJjWwSs')+3;
@@ -1053,8 +1157,16 @@ begin
   end;
 
 
-  processlist.Canvas.font.color:=processlist.font.color;
+
+  if odSelected in state then
+    processlist.Canvas.font.color:=clHighlightText
+  else
+    processlist.Canvas.font.color:=processlist.font.color;
+
   processlist.Canvas.TextOut(rect.Left+rect.Bottom-rect.Top+3,rect.Top,t);
+
+  if getConnection<>nil then exit;
+
   {$ifdef windows}
   if getprocessicons and (processlist.Items.Objects[index]<>nil) then
   begin
@@ -1078,6 +1190,8 @@ var
   s: string;
   i: integer;
 begin
+  if getconnection<>nil then
+    tabheader.ShowTabs:=true;
 
   OKButton.Constraints.MinHeight:=trunc(1.2*btnAttachDebugger.height);
   CancelButton.Constraints.MinHeight:=OKButton.Constraints.MinHeight;
@@ -1257,10 +1371,19 @@ procedure TProcessWindow.TabHeaderResize(Sender: TObject);
 var p: tpoint;
 begin
   p:=TabHeader.ClientToParent(point(0,0));
-  processlist.Top:=p.Y;
+
+  //if TabHeader.ShowTabs=false then
+ //   processlist.top:=tabheader.top
+ // else
+    processlist.Top:=p.Y;
+
   processlist.Left:=p.X;
   processlist.Width:=TabHeader.ClientWidth;
-  processlist.Height:=TabHeader.ClientHeight;
+
+ // if tabheader.ShowTabs=false then
+    processlist.Height:=TabHeader.ClientHeight
+ // else
+ //   processlist.Height:=tabheader.Height;
 end;
 
 procedure TProcessWindow.Timer1Timer(Sender: TObject);

@@ -6,22 +6,19 @@ unit foundlisthelper;
 
 
 interface
-
-
-
-
-{$ifdef jni}
-//in cecore the foundlisthelper is data only. No link to a listview
-uses sysutils,classes, symbolhandler, ProcessHandlerUnit, NewKernelHandler, memscan,
+(*
+      {$ifdef jni} sysutils,classes, symbolhandler, ProcessHandlerUnit, NewKernelHandler, memscan,
      byteinterpreter, CustomTypeHandler, groupscancommandparser, math, AvgLvlTree,
-     commonTypeDefs, parsers, unixporthelper;
-{$else}
-uses {$ifdef darwin}macport,{$endif}
+     commonTypeDefs, parsers, unixporthelper
+     {$else}
+*)
+
+uses
+
+     {$ifdef darwin}macport,{$endif}
      sysutils,classes,ComCtrls,StdCtrls, symbolhandlerstructs,
      NewKernelHandler, memscan, CustomTypeHandler, byteinterpreter,
      groupscancommandparser, math, AvgLvlTree, commonTypeDefs, parsers;
-
-{$endif}
 
 type TScanType=(fs_advanced,fs_addresslist);
 
@@ -206,7 +203,7 @@ end;
 
 function TFoundList.GetVarLength:integer;
 begin
-  result:=varlength;
+  result:=varlength; //freepascal bug: you'll have to build instead of compile...
 end;
 
 function TFoundList.getGCP: TGroupscanCommandParser;
@@ -247,7 +244,7 @@ begin
       addresspos:=7+sizeof(sizeof(TBitAddress))*i
     else
     if vartype =vtGrouped then
-      addresspos:=7+sizeof(dword)+groupElementSize
+      addresspos:=7+sizeof(dword)+groupElementSize*i
     else
       addresspos:=7+sizeof(sizeof(ptruint))*i;
 
@@ -388,6 +385,9 @@ var i,j: integer;
     si,l: integer;
     x: dword;
     temp: string;
+
+    li: Tlistitem;
+    r: trect;
 begin
   setlength(oldvalues,0);
 
@@ -427,9 +427,8 @@ begin
       getaddress(i,x,temp);
       if temp<>oldvalues[j] then
       begin
-        foundlist.items[-1];
-        foundlist.Refresh;
-        foundlist.Refresh; (* lazarus bug bypass *)
+        li:=foundlist.items[-1];
+        foundlist.Invalidate;
         exit;
       end;
       inc(j);
@@ -698,10 +697,10 @@ begin
           begin
             valuelist[j]:=valuelist[j]+gcp.elements[k].command+'['+inttohex(groupdata^.offsets[k],1)+']:';
 
-            if not gcp.elements[k].wildcard then
-              valuelist[j]:=valuelist[j]+readAndParseAddress(currentaddress+groupdata^.offsets[k], gcp.elements[k].vartype, gcp.elements[k].customtype, false, false, gcp.elements[k].bytesize)
-            else
-              valuelist[j]:=valuelist[j]+'*';
+            //if not gcp.elements[k].wildcard then
+              valuelist[j]:=valuelist[j]+readAndParseAddress(currentaddress+groupdata^.offsets[k], gcp.elements[k].vartype, gcp.elements[k].customtype, false, false, gcp.elements[k].bytesize);
+            //else
+            //  valuelist[j]:=valuelist[j]+'*';
 
 
             if k<>length(gcp.elements)-1 then

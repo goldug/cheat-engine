@@ -1,7 +1,7 @@
 object frmExeTrainerGenerator: TfrmExeTrainerGenerator
-  Left = 675
+  Left = 677
   Height = 273
-  Top = 243
+  Top = 246
   Width = 597
   AutoSize = True
   Caption = 'Exe Trainer Generator'
@@ -15,7 +15,7 @@ object frmExeTrainerGenerator: TfrmExeTrainerGenerator
   OnCreate = FormCreate
   OnShow = FormShow
   Position = poScreenCenter
-  LCLVersion = '2.0.6.0'
+  LCLVersion = '2.2.2.0'
   object Panel1: TPanel
     Left = 0
     Height = 228

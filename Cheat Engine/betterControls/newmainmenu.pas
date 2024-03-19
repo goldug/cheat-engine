@@ -10,10 +10,14 @@ uses
 type
   TNewMenuItem=class(TMenuItem)
   private
+    fCustomFontColor: TColor;
   protected
     function DoDrawItem(ACanvas: TCanvas; ARect: TRect; AState: TOwnerDrawState): Boolean; override;
+    procedure setCustomFontColor(newcolor: TColor); virtual;
   public
+    constructor Create(TheOwner: TComponent); override;
   published
+    property FontColor: TColor read fCustomFontColor write setCustomFontColor;
   end;
 
 
@@ -88,6 +92,10 @@ var oldc: tcolor;
 begin
   result:=inherited DoDrawItem(ACanvas, ARect, AState);
 
+  if acanvas=nil then exit;
+  if parent=nil then exit;
+  if parent.menu=nil then exit;
+
   if ShouldAppsUseDarkMode() and (result=false) then
   begin
     result:=Parent.Menu is TMainMenu;
@@ -106,10 +114,22 @@ begin
         end;
 
       if MenuIndex=lastvisible then //name='MenuItem3' then
-        ARect.Width:=tcustomform(owner).width;
+      begin
+        if owner is TCustomForm then
+          ARect.Width:=tcustomform(owner).width
+        else
+        begin
+          ARect.Width:=acanvas.width-arect.Left;
+        end;
+      end;
       acanvas.FillRect(arect);
 
-      acanvas.font.color:=clWhite;
+
+      if fCustomFontColor=clDefault then
+        acanvas.font.color:=clWhite
+      else
+        acanvas.font.color:=fCustomFontColor;
+
       ts:=acanvas.TextStyle;
       ts.ShowPrefix:=true;
       acanvas.Brush.Style:=bsSolid;
@@ -132,6 +152,19 @@ begin
     end;
 
   end;
+end;
+
+procedure TNewMenuItem.setCustomFontColor(newcolor: TColor);
+begin
+  fCustomFontColor:=newcolor;
+  enabled:=not enabled; //repaints it
+  enabled:=not enabled;
+end;
+
+constructor TNewMenuItem.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  fCustomFontColor:=clDefault;
 end;
 
 end.

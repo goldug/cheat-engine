@@ -207,7 +207,15 @@ begin
   begin
     sci:=SourceCodeInfoCollection.getSourceCodeInfo(fAddress);
     if sci<>nil then
-      result:=sci.get(fAddress);
+    begin
+      if sci.processID<>processid then
+      begin
+        sci.Free;
+        exit(nil);
+      end;
+
+      result:=sci.getLineInfo(fAddress);
+    end;
   end;
 
 end;
@@ -378,11 +386,12 @@ var
     header0left: integer;
 
 begin
+
   d:=TDisassemblerview(owner).currentDisassembler;
 
   fcanvas.font.style:=[];
 
-  iscurrentinstruction:=MemoryBrowser.lastdebugcontext.{$ifdef cpu64}rip{$else}EIP{$endif}=address;
+  iscurrentinstruction:=(memorybrowser.context<>nil) and (memorybrowser.contexthandler<>nil) and (memorybrowser.contexthandler.InstructionPointerRegister^.getValue(MemoryBrowser.context)=address);
 
   self.focused:=focused;
 
@@ -423,27 +432,20 @@ begin
     extrasymboldata:=nil;
 
 
-
-
-
-
   if iscurrentinstruction then
-    d.context:=@MemoryBrowser.lastdebugcontext
+    d.context:=MemoryBrowser.context
   else
     d.context:=nil;
 
   fdisassembled:=d.disassemble(address,fdescription);
 
-  addressstring:=inttohex(d.LastDisassembleData.address,8);
+  if TDisassemblerview(owner).UseRelativeBase then
+    addressString:='+'+inttohex(d.LastDisassembleData.address-TDisassemblerview(owner).RelativeBase,8)
+  else
+    addressstring:=inttohex(d.LastDisassembleData.address,8);
+
   bytestring:=d.getLastBytestring;
   opcodestring:=d.LastDisassembleData.prefix+d.LastDisassembleData.opcode;
-
-  //Correction for rendering bug.
-  if (processhandler.isNetwork=true) and (processhandler.SystemArchitecture=archarm) then
-  begin
-    bytestring+=' ';
-    opcodestring+=' ';
-  end;       
   
   parameterstring:=d.LastDisassembleData.parameters+' ';
   specialstring:=d.DecodeLastParametersToString;
@@ -468,10 +470,25 @@ begin
     end;
   end;
 
+
   if symhandler.showsymbols or symhandler.showmodules then
-    addressString:=symbolname
+  begin
+    if TDisassemblerview(owner).UseRelativeBase then
+      addressString:=addressstring+' ('+symbolname+')'
+    else
+      addressString:=symbolname;
+  end
   else
     addressString:=truncatestring(addressString, fHeaders.Items[0].Width-2);
+
+
+  //Correction for rendering bug.
+  if (processhandler.isNetwork=true) and (processhandler.SystemArchitecture=archarm) then
+  begin
+    addressstring+=' ';
+    bytestring+=' ';
+    opcodestring+=' ';
+  end;
 
   TDisassemblerview(owner).DoDisassemblerViewLineOverride(address, addressstring, bytestring, opcodestring, parameterstring, specialstring);
 
@@ -614,7 +631,7 @@ begin
     sourcecodeinfo:=SourceCodeInfoCollection.getSourceCodeInfo(faddress);
     if sourcecodeinfo<>nil then
     begin
-      lni:=sourcecodeinfo.get(faddress);
+      lni:=sourcecodeinfo.getLineInfo(faddress);
       if lni<>nil then
       begin
         sourcecode:=Tstringlist.create;
@@ -624,7 +641,7 @@ begin
         if (not UseOriginalRenderingSystem) and (ftfont<>nil) then
         begin
           sourcecodelineheight:=ceil(ftfont.TextHeight('xxx'));
-          sourcecodeindentationstart:=ftfont.TextWidth(sourcecode[0]+' ');
+          sourcecodeindentationstart:=ceil(ftfont.TextWidth(sourcecode[0]+' '));
         end
         else
         {$endif}
@@ -637,7 +654,7 @@ begin
 
         sourcecodeheight:=sourcecodelineheight*(sourcecode.Count-1); //first line is the file and linenumber
 
-        fheight:=height+sourcecodelineheight;
+        fheight:=height+sourcecodeheight;
       end;
     end;
   end;
@@ -1221,7 +1238,7 @@ begin
     end;
   end
   else
-    i:=length(text);
+    i:=length(text)+1;
 
   setcolor;
 
